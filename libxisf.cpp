@@ -101,6 +101,51 @@ static void byteShuffle(ByteArray &data, int itemSize)
     }
 }
 
+#ifdef __SSE2__
+#include <x86intrin.h>
+
+template<int itemSize>
+size_t byteUnshuffleSSE(const char *in, char *out, size_t num)
+{
+    //size_t size = num;
+    const __m128i *_in[4] = {(const __m128i*)in,
+                             (const __m128i*)(in + num),
+                             (const __m128i*)(in + num * 2),
+                             (const __m128i*)(in + num * 3)};
+    __m128i *_out = (__m128i*)out;
+    num /= 16;
+
+    for(size_t i = 0; i < num; i++)
+    {
+        if constexpr(itemSize == 4)
+        {
+            __m128i a = _mm_loadu_si128(_in[0] + i);
+            __m128i b = _mm_loadu_si128(_in[1] + i);
+            __m128i c = _mm_loadu_si128(_in[2] + i);
+            __m128i d = _mm_loadu_si128(_in[3] + i);
+            __m128i x = _mm_unpacklo_epi8(a, b);
+            __m128i y = _mm_unpackhi_epi8(a, b);
+            __m128i z = _mm_unpacklo_epi8(c, d);
+            __m128i w = _mm_unpackhi_epi8(c, d);
+            _mm_storeu_si128(_out + i * 4, _mm_unpacklo_epi16(x, z));
+            _mm_storeu_si128(_out + i * 4 + 1, _mm_unpackhi_epi16(x, z));
+            _mm_storeu_si128(_out + i * 4 + 2, _mm_unpacklo_epi16(y, w));
+            _mm_storeu_si128(_out + i * 4 + 3, _mm_unpackhi_epi16(y, w));
+        }
+        if constexpr(itemSize == 2)
+        {
+            __m128i a = _mm_loadu_si128(_in[0] + i);
+            __m128i b = _mm_loadu_si128(_in[1] + i);
+            __m128i x = _mm_unpacklo_epi8(a, b);
+            __m128i y = _mm_unpackhi_epi8(a, b);
+            _mm_storeu_si128(_out + i * 2, x);
+            _mm_storeu_si128(_out + i * 2 + 1, y);
+        }
+    }
+    return num * 16 * itemSize;
+}
+#endif
+
 static void byteUnshuffle(ByteArray &data, int itemSize)
 {
     if(itemSize > 1)
@@ -108,11 +153,19 @@ static void byteUnshuffle(ByteArray &data, int itemSize)
         ByteArray &input = data;
         ByteArray output(input.size());
         size_t num = input.size() / itemSize;
-        const char *s = input.constData();
+        size_t off = 0;
+#ifdef __SSE2__
+        if(itemSize == 4)
+            off = byteUnshuffleSSE<4>(input.data(), output.data(), num);
+        if(itemSize == 2)
+            off = byteUnshuffleSSE<2>(input.data(), output.data(), num);
+#endif
+
+        const char *s = input.constData() + off;
         for(int i=0; i<itemSize; i++)
         {
-            char *u = output.data() + i;
-            for(size_t o=0; o<num; o++, s++, u += itemSize)
+            char *u = output.data() + i + off;
+            for(size_t o = off / itemSize; o < num; o++, s++, u += itemSize)
                 *u = *s;
         }
         memcpy(output.data() + num * itemSize, s, input.size() % itemSize);
