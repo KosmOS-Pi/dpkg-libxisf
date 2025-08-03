@@ -17,7 +17,6 @@
  ************************************************************************/
 
 #include <charconv>
-#include <type_traits>
 #include <map>
 #include <regex>
 #include <iomanip>
@@ -403,7 +402,6 @@ Variant variantFromString(Variant::Type type, const String &str)
 
 Variant::Type Variant::type() const
 {
-    int idx = _value.index();
     return (Variant::Type)_value.index();
 }
 

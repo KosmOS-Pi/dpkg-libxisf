@@ -443,6 +443,12 @@ public:
      * @param name of keyword that will be removed
      */
     void removeFITSKeyword(uint32_t image, const String &name);
+    /**
+     * @brief updateProperty add new or update existing XISF Property
+     * @param image index of image to update
+     * @param property new value of property
+     */
+    void updateProperty(uint32_t image, const Property &property);
 private:
     XISFModifyPrivate *p;
 };

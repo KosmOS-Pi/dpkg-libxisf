@@ -1034,11 +1034,11 @@ public:
     void save(std::ostream &io);
     void writeImage(const Image &image);
     static void writeFITSKeyword(pugi::xml_node &node, const FITSKeyword &keyword);
+    static void writePropertyElement(pugi::xml_node &node, const Property &property);
 private:
     void writeHeader();
     void writeImageElement(pugi::xml_node &node, const Image &image);
     void writeDataBlockAttributes(pugi::xml_node &image_node, const DataBlock &dataBlock);
-    void writePropertyElement(pugi::xml_node &node, const Property &property);
     void writeMetadata(pugi::xml_node &node);
     void updateImageAttachmentPos(pugi::xml_node &root, size_t offset);
     ByteArray _xisfHeader;
@@ -1371,6 +1371,7 @@ public:
     void addFITSKeyword(uint32_t image, const FITSKeyword &keyword);
     void updateFITSKeyword(uint32_t image, const FITSKeyword &keyword, bool add);
     void removeFITSKeyword(uint32_t image, const String &name);
+    void updateProperty(uint32_t image, const Property &property);
 private:
     void readXISFHeader();
     void parseAttachmentPos(pugi::xml_node &root);
@@ -1551,6 +1552,27 @@ void XISFModifyPrivate::removeFITSKeyword(uint32_t image, const String &name)
         imageNode.remove_child(keywordNode);
 }
 
+void XISFModifyPrivate::updateProperty(uint32_t image, const Property &property)
+{
+    if(!_root)
+        throw Error("No input file opened");
+
+    pugi::xpath_node_set images = _root.select_nodes("//Image");
+
+    if(image >= images.size())
+        throw Error("Out of bounds");
+
+    pugi::xpath_variable_set variables;
+    variables.set("id", property.id.c_str());
+    pugi::xml_node imageNode = images[image].node();
+    pugi::xml_node propertyNode = imageNode.select_node("Property[@id=string($id)]", &variables).node();
+
+    if(propertyNode)
+        imageNode.remove_child(propertyNode);
+
+    XISFWriterPrivate::writePropertyElement(imageNode, property);
+}
+
 void XISFModifyPrivate::readXISFHeader()
 {
     char signature[8];
@@ -1667,6 +1689,11 @@ void XISFModify::updateFITSKeyword(uint32_t image, const FITSKeyword &keyword, b
 void XISFModify::removeFITSKeyword(uint32_t image, const String &name)
 {
     p->removeFITSKeyword(image, name);
+}
+
+void XISFModify::updateProperty(uint32_t image, const Property &property)
+{
+    p->updateProperty(image, property);
 }
 
 #define STRING_ENUM(map, map2, c, e) { map.insert({#e, c::e}); map2.insert({c::e, #e}); }
