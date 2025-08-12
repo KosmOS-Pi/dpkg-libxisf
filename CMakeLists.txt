@@ -16,7 +16,7 @@ option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
 option(USE_BUNDLED_LIBS "Use bundled LZ4 PugiXML and Zlib. You can still exclude some" ON)
 cmake_dependent_option(USE_BUNDLED_LZ4 "Use bundled LZ4" ON "USE_BUNDLED_LIBS" OFF)
 cmake_dependent_option(USE_BUNDLED_PUGIXML "Use bundled PugiXML" ON "USE_BUNDLED_LIBS" OFF)
-cmake_dependent_option(USE_BUNDLED_ZLIB "Use bundled Zlib" ON "USE_BUNDLED_LIBS" OFF)
+cmake_dependent_option(USE_BUNDLED_ZLIB "Use bundled Zlib" OFF "USE_BUNDLED_LIBS" OFF)
 
 find_package(PkgConfig)
 
