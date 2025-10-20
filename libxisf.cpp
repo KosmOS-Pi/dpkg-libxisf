@@ -1383,7 +1383,6 @@ private:
     pugi::xml_document _doc;
     pugi::xml_node _root;
     std::map<int, std::pair<uint64_t, uint64_t>> _attachmentPos;// pair contain position and size
-    std::map<int, std::pair<uint64_t, uint64_t>> _attachmentPosNew;
 };
 
 
@@ -1445,6 +1444,8 @@ void XISFModifyPrivate::save(std::ostream &io)
     pugi::xml_document doc;
     doc.append_child(pugi::node_comment).set_value("\nExtensible Image Serialization Format - XISF version 1.0\nCreated with libXISF - https://nouspiro.space\n");
     pugi::xml_node root_copy = doc.append_copy(_root);
+
+    parseAttachmentPos(_root);
 
     uint32_t size = 0;
     std::string header;
@@ -1601,6 +1602,7 @@ void XISFModifyPrivate::readXISFHeader()
 
 void XISFModifyPrivate::parseAttachmentPos(pugi::xml_node &root)
 {
+    _attachmentPos.clear();
     pugi::xpath_node_set locationAttributes = root.select_nodes("//@location");
     int i = 0;
     for(auto &attr : locationAttributes)
@@ -1625,7 +1627,6 @@ void XISFModifyPrivate::updateAttachmentPos(pugi::xml_node &root, size_t offset)
         pugi::xml_attribute attr = locationAttributes[pos.first].attribute();
         uint64_t attachmentSize = pos.second.second;
         std::string locationStr = "attachment:" + std::to_string(offset) + ":" + std::to_string(attachmentSize);
-        _attachmentPosNew[pos.first] = pos.second;
         offset += attachmentSize;
         attr.set_value(locationStr.c_str());
     }
