@@ -20,15 +20,15 @@
 #define LIBXISF_H
 
 #include "libXISF_global.h"
-#include <memory>
-#include <map>
-#include <variant>
-#include <fstream>
-#include <cstring>
-#include <vector>
 #include <cstdint>
-#include <memory>
+#include <cstring>
 #include <ctime>
+#include <filesystem>
+#include <map>
+#include <memory>
+#include <memory>
+#include <variant>
+#include <vector>
 
 namespace LibXISF
 {
@@ -370,6 +370,7 @@ public:
     void open(const ByteArray &data);
     /** Open image from istream. This method takes ownership of *io pointer */
     void open(std::istream *io);
+    void open(const std::filesystem::path &path);
     /** Close opended file release all data. */
     void close();
     /** Return number of images inside file */
@@ -396,6 +397,7 @@ public:
     void save(const String &name);
     void save(ByteArray &data);
     void save(std::ostream &io);
+    void save(const std::filesystem::path &path);
     void writeImage(const Image &image);
 private:
     XISFWriterPrivate *p;
@@ -419,10 +421,12 @@ public:
     void open(const String &name);
     void open(const ByteArray &data);
     void open(std::istream *io);
+    void open(const std::filesystem::path &path);
     void close();
     void save(const String &name);
     void save(ByteArray &data);
     void save(std::ostream &io);
+    void save(const std::filesystem::path &path);
 
     /**
      * @brief addFITSKeyword append new keyword to image

@@ -17,21 +17,21 @@
  ************************************************************************/
 
 #include "libxisf.h"
-#include <unordered_map>
-#include <unordered_set>
-#include <cstring>
-#include <iostream>
-#include <sstream>
-#include <cstdlib>
+#include "streambuffer.h"
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <iostream>
 #include <lz4.h>
 #include <lz4hc.h>
 #include <pugixml.hpp>
+#include <sstream>
+#include <unordered_map>
 #include <zlib.h>
 #ifdef HAVE_ZSTD
 #include <zstd.h>
 #endif
-#include "streambuffer.h"
 
 namespace LibXISF
 {
@@ -701,6 +701,7 @@ public:
     void open(const ByteArray &data);
     /** Open image from istream. This method takes ownership of *io pointer */
     void open(std::istream *io);
+    void open(const std::filesystem::path &path);
     /** Close opended file release all data. */
     void close();
     /** Return number of images inside file */
@@ -750,6 +751,14 @@ void XISFReaderPrivate::open(std::istream *io)
 {
     close();
     _io.reset(io);
+    readSignature();
+    readXISFHeader();
+}
+
+void XISFReaderPrivate::open(const std::filesystem::path &path)
+{
+    close();
+    _io = std::make_unique<std::ifstream>(path, std::ios_base::in | std::ios_base::binary);
     readSignature();
     readXISFHeader();
 }
@@ -1032,6 +1041,7 @@ public:
     void save(const String &name);
     void save(ByteArray &data);
     void save(std::ostream &io);
+    void save(const std::filesystem::path &path);
     void writeImage(const Image &image);
     static void writeFITSKeyword(pugi::xml_node &node, const FITSKeyword &keyword);
     static void writePropertyElement(pugi::xml_node &node, const Property &property);
@@ -1082,6 +1092,16 @@ void XISFWriterPrivate::save(std::ostream &io)
             size -= s;
         }
     }
+}
+
+void XISFWriterPrivate::save(const std::filesystem::path &path)
+{
+    std::ofstream fw(path, std::ios_base::out | std::ios_base::binary);
+
+    if(fw.fail())
+        throw Error("Failed to open file");
+
+    save(fw);
 }
 
 void XISFWriterPrivate::writeImage(const Image &image)
@@ -1304,6 +1324,11 @@ void XISFReader::open(std::istream *io)
     p->open(io);
 }
 
+void XISFReader::open(const std::filesystem::path &path)
+{
+    p->open(path);
+}
+
 void XISFReader::close()
 {
     p->close();
@@ -1349,6 +1374,11 @@ void XISFWriter::save(std::ostream &io)
     p->save(io);
 }
 
+void XISFWriter::save(const std::filesystem::path &path)
+{
+    p->save(path);
+}
+
 void XISFWriter::writeImage(const Image &image)
 {
     p->writeImage(image);
@@ -1361,12 +1391,14 @@ public:
     void open(const ByteArray &data);
     /** Open image from istream. This method takes ownership of *io pointer */
     void open(std::istream *io);
+    void open(const std::filesystem::path &path);
     /** Close opended file release all data. */
     void close();
 
     void save(const String &name);
     void save(ByteArray &data);
     void save(std::ostream &io);
+    void save(const std::filesystem::path &path);
 
     void addFITSKeyword(uint32_t image, const FITSKeyword &keyword);
     void updateFITSKeyword(uint32_t image, const FITSKeyword &keyword, bool add);
@@ -1405,6 +1437,13 @@ void XISFModifyPrivate::open(std::istream *io)
 {
     close();
     _io.reset(io);
+    readXISFHeader();
+}
+
+void XISFModifyPrivate::open(const std::filesystem::path &path)
+{
+    close();
+    _io = std::make_unique<std::ifstream>(path, std::ios_base::in | std::ios_base::binary);
     readXISFHeader();
 }
 
@@ -1485,6 +1524,16 @@ void XISFModifyPrivate::save(std::ostream &io)
             size -= std::min(size, BLOCK_SIZE);
         }
     }
+}
+
+void XISFModifyPrivate::save(const std::filesystem::path &path)
+{
+    std::ofstream fw(path, std::ios_base::out | std::ios_base::binary);
+
+    if(fw.fail())
+        throw Error("Failed to open file");
+
+    save(fw);
 }
 
 void XISFModifyPrivate::addFITSKeyword(uint32_t image, const FITSKeyword &keyword)
@@ -1657,6 +1706,11 @@ void XISFModify::open(std::istream *io)
     p->open(io);
 }
 
+void XISFModify::open(const std::filesystem::path &path)
+{
+    p->open(path);
+}
+
 void XISFModify::close()
 {
     p->close();
@@ -1675,6 +1729,11 @@ void XISFModify::save(ByteArray &data)
 void XISFModify::save(std::ostream &io)
 {
     p->save(io);
+}
+
+void XISFModify::save(const std::filesystem::path &path)
+{
+    p->save(path);
 }
 
 void XISFModify::addFITSKeyword(uint32_t image, const FITSKeyword &keyword)

@@ -102,7 +102,7 @@ int main(int argc, char **argv)
         else
         {
             LibXISF::XISFReader reader;
-            reader.open(argv[1]);
+            reader.open(LibXISF::String(argv[1]));
             TEST(reader.imagesCount() != 1, "No image");
 
             const LibXISF::Image &image = reader.getImage(0);
