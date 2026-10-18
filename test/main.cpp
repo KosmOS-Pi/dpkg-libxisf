@@ -48,12 +48,19 @@ int main(int argc, char **argv)
             image.addProperty(Property("PropertyComplex64", Complex64{-3.0, 2.0}));
             image.addProperty(Property("VectorUInt16", UI16Vector({23, 45, 86})));
             image.addProperty(Property("VectorComplex32", C32Vector({{1, 2}, {3, 4}, {5, 6}})));
+            image.addProperty(Property("Vector64", F64Vector({1.0, 2.0, 3.0})));
+            image.addProperty(Property("Vector64Empty", F64Vector()));
             UI16Matrix m(2, 3);
             m(0, 0) = 0;
             m(0, 1) = 1;
             m(0, 2) = 2;
             m(1, 0) = 10;
             image.addProperty(Property("UI16Matrix", m));
+            uint16_t *imageData = image.imageData<uint16_t>();
+            for(uint64_t i = 0; i < image.height() * image.width(); i++)
+            {
+                imageData[i] = i;
+            }
             std::tm tm = {12, 22, 23, 1, 2, 2023, 0, 0, 0};
             image.addProperty(Property("TimeObs", tm));
             image.addFITSKeyword({"RA", "226.9751163116387", "Right ascension of the center of the image (deg)"});

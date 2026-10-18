@@ -56,9 +56,9 @@ public:
     ByteArray(const ByteArray &d);
     char& operator[](size_t i);
     const char& operator[](size_t i) const;
-    char* data() { return &_data->at(0); }
-    const char* data() const { return &_data->at(0); }
-    const char* constData() const { return &_data->at(0); }
+    char* data() { return size() ? _data->data() : nullptr; }
+    const char* data() const { return size() ? _data->data() : nullptr; }
+    const char* constData() const { return size() ? _data->data() : nullptr; }
     size_t size() const;
     void resize(size_t newsize);
     void append(char c);
@@ -204,6 +204,8 @@ struct LIBXISF_EXPORT Property
     Property(const String &_id, const T& _value) :
         id(_id),
         value(_value){}
+
+    Property& operator=(const Property &d) = default;
 };
 
 struct LIBXISF_EXPORT FITSKeyword

@@ -161,15 +161,33 @@ static void byteUnshuffle(ByteArray &data, int itemSize)
             off = byteUnshuffleSSE<2>(input.data(), output.data(), num);
 #endif
 
-        const char *s = input.constData() + off;
         for(int i=0; i<itemSize; i++)
         {
+            const char *s = input.constData() + i * num + off / itemSize;
             char *u = output.data() + i + off;
             for(size_t o = off / itemSize; o < num; o++, s++, u += itemSize)
                 *u = *s;
         }
-        memcpy(output.data() + num * itemSize, s, input.size() % itemSize);
+        memcpy(output.data() + num * itemSize, input.constData() + num * itemSize, input.size() % itemSize);
         data = output;
+    }
+}
+
+/*
+ * XISF 1.0 Revision 2, section 10.6.1. A subblock whose compressed and
+ * uncompressed lengths are equal is an uncompressed subblock, unless it
+ * decompresses to exactly its uncompressed length (encoders implementing
+ * earlier revisions could generate such subblocks). Every other subblock must
+ * decompress to exactly its uncompressed length.
+ */
+static void uncompressedSubblock(bool decompressed, const std::pair<uint64_t, uint64_t> &block,
+                                 const char *srcPtr, char *dstPtr, const char *errorMessage)
+{
+    if(!decompressed)
+    {
+        if(block.first != block.second)
+            throw Error(errorMessage);
+        std::memcpy(dstPtr, srcPtr, block.second);
     }
 }
 
@@ -198,7 +216,8 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
         for(auto &block : subblocks)
         {
             uLongf size = block.second;
-            ::uncompress((Bytef*)dstPtr, &size, (const Bytef*)srcPtr, block.first);
+            bool ok = ::uncompress((Bytef*)dstPtr, &size, (const Bytef*)srcPtr, block.first) == Z_OK && size == block.second;
+            uncompressedSubblock(ok, block, srcPtr, dstPtr, "Zlib decompression failed");
             srcPtr += block.first;
             dstPtr += block.second;
         }
@@ -212,8 +231,8 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
         char *dstPtr = data.data();
         for(auto &block : subblocks)
         {
-            if(LZ4_decompress_safe(srcPtr, dstPtr, block.first, block.second) < 0)
-                throw Error("LZ4 decompression failed");
+            bool ok = LZ4_decompress_safe(srcPtr, dstPtr, block.first, block.second) == static_cast<int>(block.second);
+            uncompressedSubblock(ok, block, srcPtr, dstPtr, "LZ4 decompression failed");
             srcPtr += block.first;
             dstPtr += block.second;
         }
@@ -227,8 +246,9 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
         char *dstPtr = data.data();
         for(auto &block : subblocks)
         {
-            if(ZSTD_isError(ZSTD_decompress(dstPtr, block.second, srcPtr, block.first)))
-                throw Error("ZSTD decompression failed");
+            size_t size = ZSTD_decompress(dstPtr, block.second, srcPtr, block.first);
+            bool ok = !ZSTD_isError(size) && size == block.second;
+            uncompressedSubblock(ok, block, srcPtr, dstPtr, "ZSTD decompression failed");
             srcPtr += block.first;
             dstPtr += block.second;
         }
