@@ -308,6 +308,11 @@ public:
      *  For example OBSERVER => Observer:Name, SITELAT => Observation:Location:Latitude
     */
     bool addFITSKeywordAsProperty(const String &name, const String &value);
+    /**
+     * Convert FITS WCS keywords added previosly with addFITSKeyword() to XISF properties AstrometricSolution
+     * https://pixinsight.com/doc/docs/XISF-1.0-spec/XISF-1.0-spec.html#__XISF_Core_Elements_:_Image_Core_Element_:_Astronomical_Image_Properties_:_AstrometricSolution_Namespace__
+    */
+    bool convertWCSToAstrometricSolution();
     const ByteArray& iccProfile() const;
     void setIccProfile(const ByteArray &iccProfile);
 

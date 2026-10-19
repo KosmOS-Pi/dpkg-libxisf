@@ -18,6 +18,7 @@
 
 #include "libxisf.h"
 #include "streambuffer.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -522,6 +523,43 @@ bool Image::addFITSKeywordAsProperty(const String &name, const String &value)
             prop.value.value<LibXISF::Float32>() /= 1000.0f;
 
         updateProperty(prop);
+        return true;
+    }
+    return false;
+}
+
+bool Image::convertWCSToAstrometricSolution()
+{
+    auto findKeyword = [this](const String &key, String &value) -> bool {
+        auto keyEqual = [&key](const FITSKeyword &entry) {
+            return entry.name == key;
+        };
+        auto it = std::find_if(_fitsKeywords.begin(), _fitsKeywords.end(), keyEqual);
+        if(it != _fitsKeywords.end())
+        {
+            value = it->value;
+            return true;
+        }
+        return false;
+    };
+    String crval1, crval2, crpix1, crpix2, cd1_1, cd1_2, cd2_1, cd2_2, ctype1, ctype2;
+    if(findKeyword("CRVAL1", crval1) && findKeyword("CRVAL2", crval2) &&
+       findKeyword("CRPIX1", crpix1) && findKeyword("CRPIX2", crpix2) &&
+       findKeyword("CD1_1", cd1_1) && findKeyword("CD1_2", cd1_2) && findKeyword("CD2_1", cd2_1) && findKeyword("CD2_2", cd2_2) &&
+       findKeyword("CTYPE1", ctype1) && findKeyword("CTYPE2", ctype2))
+    {
+        Property ver("AstrometricSolution:Version", "1.0");
+        Property ps("AstrometricSolution:ProjectionSystem", "Gnomonic");
+        Property rcc("AstrometricSolution:ReferenceCelestialCoordinates", F64Vector{std::stod(crval1), std::stod(crval2)});
+        Property ric("AstrometricSolution:ReferenceImageCoordinates", F64Vector{std::stod(crpix1), std::stod(crpix2)});
+        F64Matrix mx(2, 2);
+        mx(0, 0) = std::stod(cd1_1); mx(0, 1) = std::stod(cd1_2); mx(1, 0) = std::stod(cd2_1); mx(1, 1) = std::stod(cd2_2);
+        Property ltm("AstrometricSolution:LinearTransformationMatrix", mx);
+        updateProperty(ver);
+        updateProperty(ps);
+        updateProperty(rcc);
+        updateProperty(ric);
+        updateProperty(ltm);
         return true;
     }
     return false;
