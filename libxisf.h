@@ -56,6 +56,7 @@ public:
     ByteArray(const ByteArray &d);
     char& operator[](size_t i);
     const char& operator[](size_t i) const;
+    ByteArray& operator=(const ByteArray &d);
     char* data() { return size() ? _data->data() : nullptr; }
     const char* data() const { return size() ? _data->data() : nullptr; }
     const char* constData() const { return size() ? _data->data() : nullptr; }
@@ -460,6 +461,12 @@ public:
      * @param property new value of property
      */
     void updateProperty(uint32_t image, const Property &property);
+    /**
+     * @brief removeProperty remove existing property
+     * @param image index of image to update
+     * @param id of property to remove
+     */
+    void removeProperty(uint32_t image, const String &id);
 private:
     XISFModifyPrivate *p;
 };

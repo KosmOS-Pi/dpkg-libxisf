@@ -1477,6 +1477,7 @@ public:
     void updateFITSKeyword(uint32_t image, const FITSKeyword &keyword, bool add);
     void removeFITSKeyword(uint32_t image, const String &name);
     void updateProperty(uint32_t image, const Property &property);
+    void removeProperty(uint32_t image, const String &id);
 private:
     void readXISFHeader();
     void parseAttachmentPos(pugi::xml_node &root);
@@ -1696,6 +1697,25 @@ void XISFModifyPrivate::updateProperty(uint32_t image, const Property &property)
     XISFWriterPrivate::writePropertyElement(imageNode, property);
 }
 
+void XISFModifyPrivate::removeProperty(uint32_t image, const String &id)
+{
+    if(!_root)
+        throw Error("No input file opened");
+
+    pugi::xpath_node_set images = _root.select_nodes("//Image");
+
+    if(image >= images.size())
+        throw Error("Out of bounds");
+
+    pugi::xpath_variable_set variables;
+    variables.set("id", id.c_str());
+    pugi::xml_node imageNode = images[image].node();
+    pugi::xml_node propertyNode = imageNode.select_node("Property[@id=string($id)]", &variables).node();
+
+    if(propertyNode)
+        imageNode.remove_child(propertyNode);
+}
+
 void XISFModifyPrivate::readXISFHeader()
 {
     char signature[8];
@@ -1827,6 +1847,11 @@ void XISFModify::removeFITSKeyword(uint32_t image, const String &name)
 void XISFModify::updateProperty(uint32_t image, const Property &property)
 {
     p->updateProperty(image, property);
+}
+
+void XISFModify::removeProperty(uint32_t image, const String &id)
+{
+    p->removeProperty(image, id);
 }
 
 #define STRING_ENUM(map, map2, c, e) { map.insert({#e, c::e}); map2.insert({c::e, #e}); }

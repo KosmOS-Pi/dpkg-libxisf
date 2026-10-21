@@ -59,6 +59,13 @@ const char& ByteArray::operator[](size_t i) const
     return (*_data)[i];
 }
 
+ByteArray& ByteArray::operator=(const ByteArray &d)
+{
+    if(this != &d)
+        _data = d._data;
+    return *this;
+}
+
 size_t ByteArray::size() const
 {
     return _data->size();
