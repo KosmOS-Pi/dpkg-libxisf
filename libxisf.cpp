@@ -542,10 +542,12 @@ bool Image::convertWCSToAstrometricSolution()
         }
         return false;
     };
-    String crval1, crval2, crpix1, crpix2, cd1_1, cd1_2, cd2_1, cd2_2, ctype1, ctype2;
+    String crval1, crval2, crpix1, crpix2, cd1_1, cd1_2, cd2_1, cd2_2, ctype1, ctype2, crota1, cdelt1, cdelt2;
+    bool cdFound = findKeyword("CD1_1", cd1_1) && findKeyword("CD1_2", cd1_2) && findKeyword("CD2_1", cd2_1) && findKeyword("CD2_2", cd2_2);
+    bool crotaFound = findKeyword("CROTA1", crota1) && findKeyword("CDELT1", cdelt1) && findKeyword("CDELT2", cdelt2);
     if(findKeyword("CRVAL1", crval1) && findKeyword("CRVAL2", crval2) &&
        findKeyword("CRPIX1", crpix1) && findKeyword("CRPIX2", crpix2) &&
-       findKeyword("CD1_1", cd1_1) && findKeyword("CD1_2", cd1_2) && findKeyword("CD2_1", cd2_1) && findKeyword("CD2_2", cd2_2) &&
+       (cdFound || crotaFound) &&
        findKeyword("CTYPE1", ctype1) && findKeyword("CTYPE2", ctype2))
     {
         Property ver("AstrometricSolution:Version", "1.0");
@@ -553,7 +555,20 @@ bool Image::convertWCSToAstrometricSolution()
         Property rcc("AstrometricSolution:ReferenceCelestialCoordinates", F64Vector{std::stod(crval1), std::stod(crval2)});
         Property ric("AstrometricSolution:ReferenceImageCoordinates", F64Vector{std::stod(crpix1), std::stod(crpix2)});
         F64Matrix mx(2, 2);
-        mx(0, 0) = std::stod(cd1_1); mx(0, 1) = std::stod(cd1_2); mx(1, 0) = std::stod(cd2_1); mx(1, 1) = std::stod(cd2_2);
+        if(cdFound)
+        {
+            mx(0, 0) = std::stod(cd1_1); mx(0, 1) = std::stod(cd1_2); mx(1, 0) = std::stod(cd2_1); mx(1, 1) = std::stod(cd2_2);
+        }
+        if(crotaFound)
+        {
+            double cdeltx = std::stod(cdelt1);
+            double cdelty = std::stod(cdelt2);
+            double rotationRad = std::stod(crota1) / 180.0 * M_PI;
+            mx(0, 0) = std::cos(rotationRad) * cdeltx;
+            mx(0, 1) =-std::sin(rotationRad) * cdelty;
+            mx(1, 0) = std::sin(rotationRad) * cdeltx;
+            mx(1, 1) = std::cos(rotationRad) * cdelty;
+        }
         Property ltm("AstrometricSolution:LinearTransformationMatrix", mx);
         updateProperty(ver);
         updateProperty(ps);
