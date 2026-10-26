@@ -1,6 +1,6 @@
 /************************************************************************
  * LibXISF - library to load and save XISF files                        *
- * Copyright (C) 2023 Dušan Poizl                                       *
+ * Copyright (C) 2026 Dušan Poizl                                       *
  *                                                                      *
  * This program is free software: you can redistribute it and/or modify *
  * it under the terms of the GNU General Public License as published by *
@@ -32,40 +32,56 @@ static std::map<std::string, Variant::Type> typeToId = {
     {"Boolean",       Variant::Type::Boolean},
     {"Int8",          Variant::Type::Int8},
     {"UInt8",         Variant::Type::UInt8},
+    {"Byte",          Variant::Type::UInt8},
     {"Int16",         Variant::Type::Int16},
+    {"Short",         Variant::Type::Int16},
     {"UInt16",        Variant::Type::UInt16},
+    {"UShort",        Variant::Type::UInt16},
     {"Int32",         Variant::Type::Int32},
+    {"Int",           Variant::Type::Int32},
     {"UInt32",        Variant::Type::UInt32},
+    {"UInt",          Variant::Type::UInt32},
     {"Int64",         Variant::Type::Int64},
     {"UInt64",        Variant::Type::UInt64},
     {"Float32",       Variant::Type::Float32},
+    {"Float",         Variant::Type::Float32},
     {"Float64",       Variant::Type::Float64},
+    {"Double",        Variant::Type::Float64},
     {"Complex32",     Variant::Type::Complex32},
     {"Complex64",     Variant::Type::Complex64},
+    {"Complex",       Variant::Type::Complex64},
     {"String",        Variant::Type::String},
     {"TimePoint",     Variant::Type::TimePoint},
     {"I8Vector",      Variant::Type::I8Vector},
     {"UI8Vector",     Variant::Type::UI8Vector},
+    {"ByteArray",     Variant::Type::UI8Vector},
     {"I16Vector",     Variant::Type::I16Vector},
     {"UI16Vector",    Variant::Type::UI16Vector},
     {"I32Vector",     Variant::Type::I32Vector},
+    {"IVector",       Variant::Type::I32Vector},
     {"UI32Vector",    Variant::Type::UI32Vector},
+    {"UIVector",      Variant::Type::UI32Vector},
     {"I64Vector",     Variant::Type::I64Vector},
     {"UI64Vector",    Variant::Type::UI64Vector},
     {"F32Vector",     Variant::Type::F32Vector},
     {"F64Vector",     Variant::Type::F64Vector},
+    {"Vector",        Variant::Type::F64Vector},
     {"C32Vector",     Variant::Type::C32Vector},
     {"C64Vector",     Variant::Type::C64Vector},
     {"I8Matrix",      Variant::Type::I8Matrix},
     {"UI8Matrix",     Variant::Type::UI8Matrix},
+    {"ByteMatrix",    Variant::Type::UI8Matrix},
     {"I16Matrix",     Variant::Type::I16Matrix},
     {"UI16Matrix",    Variant::Type::UI16Matrix},
     {"I32Matrix",     Variant::Type::I32Matrix},
+    {"IMatrix",       Variant::Type::I32Matrix},
     {"UI32Matrix",    Variant::Type::UI32Matrix},
+    {"UIMatrix",      Variant::Type::UI32Matrix},
     {"I64Matrix",     Variant::Type::I64Matrix},
     {"UI64Matrix",    Variant::Type::UI64Matrix},
     {"F32Matrix",     Variant::Type::F32Matrix},
     {"F64Matrix",     Variant::Type::F64Matrix},
+    {"Matrix",        Variant::Type::F64Matrix},
     {"C32Matrix",     Variant::Type::C32Matrix},
     {"C64Matrix",     Variant::Type::C64Matrix},
 };
@@ -109,12 +125,14 @@ static std::map<Variant::Type, const char*> idToType = {
     {Variant::Type::UI64Matrix,    "UI64Matrix"},
     {Variant::Type::F32Matrix,     "F32Matrix"},
     {Variant::Type::F64Matrix,     "F64Matrix"},
+    {Variant::Type::C32Matrix,     "C32Matrix"},
+    {Variant::Type::C64Matrix,     "C64Matrix"},
 };
 
 template<typename T>
 T fromChars(const char *beg, const char *end)
 {
-    T val;
+    T val = 0;
     std::from_chars(beg, end, val);
     return val;
 }
@@ -128,7 +146,7 @@ T fromCharsComplex(const char *beg, const char *end)
     if(std::regex_match(beg, end, match, regex))
     {
         val.real = std::stod(std::string(match[1].first, match[1].second));
-        val.imag = std::stod(std::string(match[1].first, match[1].second));
+        val.imag = std::stod(std::string(match[2].first, match[2].second));
     }
     return val;
 }
@@ -426,10 +444,23 @@ String Variant::toString() const
     auto vectorString = [](auto &vector) {
         std::stringstream ss;
         ss << "{";
-        for(auto &i : vector)
+        for(size_t i = 0; i < vector.size(); i++)
         {
-            ss << i;
-            if(i != vector.back())
+            ss << vector[i];
+            if(i < vector.size() - 1)
+                ss << ",";
+        }
+        ss << "}";
+        return ss.str();
+    };
+
+    auto vectorStringC = [](auto &vector) {
+        std::stringstream ss;
+        ss << "{";
+        for(size_t i = 0; i < vector.size(); i++)
+        {
+            ss << "(" << vector[i].real << "," << vector[i].imag << ")";
+            if(i < vector.size() - 1)
                 ss << ",";
         }
         ss << "}";
@@ -459,6 +490,7 @@ String Variant::toString() const
             if(i < matrix.rows() - 1)
                 ss << ",";
         }
+        ss << "}";
         return ss.str();
     };
 
@@ -488,6 +520,8 @@ String Variant::toString() const
     case Variant::Type::F64Vector: string = vectorString(std::get<F64Vector>(_value)); break;
     case Variant::Type::F32Matrix: string = matrixString(std::get<F32Matrix>(_value)); break;
     case Variant::Type::F64Matrix: string = matrixString(std::get<F64Matrix>(_value)); break;
+    case Variant::Type::C32Vector: string = vectorStringC(std::get<C32Vector>(_value)); break;
+    case Variant::Type::C64Vector: string = vectorStringC(std::get<C64Vector>(_value)); break;
     case Variant::Type::String: string = std::get<String>(_value); break;
     case Variant::Type::TimePoint:
     {

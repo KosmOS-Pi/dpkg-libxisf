@@ -1,6 +1,6 @@
 /************************************************************************
  * LibXISF - library to load and save XISF files                        *
- * Copyright (C) 2023 Dušan Poizl                                       *
+ * Copyright (C) 2026 Dušan Poizl                                       *
  *                                                                      *
  * This program is free software: you can redistribute it and/or modify *
  * it under the terms of the GNU General Public License as published by *
@@ -56,8 +56,8 @@ const size_t GiB = 1073741824;
 static const std::unordered_map<String, std::pair<String, Variant::Type>> fitsNameToPropertyIdTypeConvert = {
     {"OBSERVER", {"Observer:Name", Variant::Type::String}},
     {"RADECSYS", {"Observation:CelestialReferenceSystem", Variant::Type::String}},
-    {"CRVAL1",   {"Observation:Center:Dec", Variant::Type::Float64}},
-    {"CRVAL2",   {"Observation:Center:RA", Variant::Type::Float64}},
+    {"CRVAL1",   {"Observation:Center:RA", Variant::Type::Float64}},
+    {"CRVAL2",   {"Observation:Center:Dec", Variant::Type::Float64}},
     {"CRPIX1",   {"Observation:Center:X", Variant::Type::Float64}},
     {"CRPIX2",   {"Observation:Center:Y", Variant::Type::Float64}},
     {"EQUINOX",  {"Observation:Equinox", Variant::Type::Float64}},
@@ -198,11 +198,19 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
 
     if(encoding == "base64")
         tmp.decodeBase64();
-    else if(encoding == "base16")
+    else if(encoding == "hex")
         tmp.decodeHex();
 
     if(subblocks.size() == 0)
         subblocks.push_back({tmp.size(), uncompressedSize});
+
+    uint64_t totalSize = 0;
+    for(auto block : subblocks)
+        totalSize += block.second;
+    if(uncompressedSize < totalSize)
+        uncompressedSize = totalSize;
+
+    uint64_t inputSize = input.size();
 
     switch(codec)
     {
@@ -217,10 +225,12 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
         for(auto &block : subblocks)
         {
             uLongf size = block.second;
+            if(inputSize < block.second)throw Error("Incorrect input block size");
             bool ok = ::uncompress((Bytef*)dstPtr, &size, (const Bytef*)srcPtr, block.first) == Z_OK && size == block.second;
             uncompressedSubblock(ok, block, srcPtr, dstPtr, "Zlib decompression failed");
             srcPtr += block.first;
             dstPtr += block.second;
+            inputSize -= block.second;
         }
         break;
     }
@@ -232,10 +242,12 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
         char *dstPtr = data.data();
         for(auto &block : subblocks)
         {
+            if(inputSize < block.second)throw Error("Incorrect input block size");
             bool ok = LZ4_decompress_safe(srcPtr, dstPtr, block.first, block.second) == static_cast<int>(block.second);
             uncompressedSubblock(ok, block, srcPtr, dstPtr, "LZ4 decompression failed");
             srcPtr += block.first;
             dstPtr += block.second;
+            inputSize -= block.second;
         }
         break;
     }
@@ -247,11 +259,13 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
         char *dstPtr = data.data();
         for(auto &block : subblocks)
         {
+            if(inputSize < block.second)throw Error("Incorrect input block size");
             size_t size = ZSTD_decompress(dstPtr, block.second, srcPtr, block.first);
             bool ok = !ZSTD_isError(size) && size == block.second;
             uncompressedSubblock(ok, block, srcPtr, dstPtr, "ZSTD decompression failed");
             srcPtr += block.first;
             dstPtr += block.second;
+            inputSize -= block.second;
         }
 
     }
@@ -275,7 +289,7 @@ void DataBlock::compress(int sampleFormatSize)
     if (compressionCodecOverride != CompressionCodec::None)
     {
         codec = compressionCodecOverride;
-        byteShuffling = sampleFormatSize;
+        if(byteShuffleOverride)byteShuffling = sampleFormatSize;
         compressLevel = compressionLevelOverride;
     }
 
@@ -550,6 +564,7 @@ bool Image::convertWCSToAstrometricSolution()
        (cdFound || crotaFound) &&
        findKeyword("CTYPE1", ctype1) && findKeyword("CTYPE2", ctype2))
     {
+        if(ctype1 != "RA---TAN" || ctype2 != "DEC--TAN")return false;
         Property ver("AstrometricSolution:Version", "1.0");
         Property ps("AstrometricSolution:ProjectionSystem", "Gnomonic");
         Property rcc("AstrometricSolution:ReferenceCelestialCoordinates", F64Vector{std::stod(crval1), std::stod(crval2)});
@@ -559,7 +574,7 @@ bool Image::convertWCSToAstrometricSolution()
         {
             mx(0, 0) = std::stod(cd1_1); mx(0, 1) = std::stod(cd1_2); mx(1, 0) = std::stod(cd2_1); mx(1, 1) = std::stod(cd2_2);
         }
-        if(crotaFound)
+        else if(crotaFound)
         {
             double cdeltx = std::stod(cdelt1);
             double cdelty = std::stod(cdelt2);
@@ -696,7 +711,17 @@ void Image::convertPixelStorageTo(PixelStorage storage)
         else
             normalToPlanar<uint64_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
         break;
-    default:
+    case Complex32:
+        if(storage == Normal)
+            planarToNormal<LibXISF::Complex32>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+        else
+            normalToPlanar<LibXISF::Complex32>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+        break;
+    case Complex64:
+        if(storage == Normal)
+            planarToNormal<LibXISF::Complex64>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+        else
+            normalToPlanar<LibXISF::Complex64>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
         break;
     }
     _dataBlock.data = tmp;
@@ -1069,7 +1094,7 @@ Image XISFReaderPrivate::parseImage(const pugi::xml_node &node)
     image._dataBlock = parseDataBlock(node);
 
     for(auto &property : node.children("Property"))
-        image._properties.push_back(parseProperty(property));
+        image.addProperty(parseProperty(property));
 
     for(auto &fitsKeyword : node.children("FITSKeyword"))
         image._fitsKeywords.push_back(parseFITSKeyword(fitsKeyword));

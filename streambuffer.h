@@ -1,6 +1,6 @@
 /************************************************************************
  * LibXISF - library to load and save XISF files                        *
- * Copyright (C) 2024 Dušan Poizl                                       *
+ * Copyright (C) 2026 Dušan Poizl                                       *
  *                                                                      *
  * This program is free software: you can redistribute it and/or modify *
  * it under the terms of the GNU General Public License as published by *
@@ -41,7 +41,7 @@ protected:
     std::streamsize xsputn(const char_type *s, std::streamsize n) override;
     int_type overflow(int_type c = traits_type::eof()) override;
 private:
-    void update_ptrs();
+    void update_ptrs(off_type ipos, off_type opos);
     off_type _size = 0;
     ByteArray _byteArray;
 };

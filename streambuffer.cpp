@@ -1,6 +1,6 @@
 /************************************************************************
  * LibXISF - library to load and save XISF files                        *
- * Copyright (C) 2024 Dušan Poizl                                       *
+ * Copyright (C) 2026 Dušan Poizl                                       *
  *                                                                      *
  * This program is free software: you can redistribute it and/or modify *
  * it under the terms of the GNU General Public License as published by *
@@ -60,7 +60,7 @@ StreamBuffer::pos_type StreamBuffer::seekoff(off_type off, std::ios_base::seekdi
         newoffo += pptr() - pbase();
     }
     else if(dir == std::ios_base::end)
-        newoffo = newoffi = _byteArray.size() - off;
+        newoffo = newoffi = _byteArray.size() + off;
 
     char *ptr = _byteArray.data();
     if(mode & std::ios_base::in && newoffi >= 0 && newoffi <= _size)
@@ -129,8 +129,10 @@ std::streamsize StreamBuffer::xsputn(const char_type *s, std::streamsize n)
     if(len < n)
     {
         _size += n - len;
+        off_type ipos = gptr() - eback();
+        off_type opos = pptr() - pbase();
         _byteArray.resize(_size);
-        update_ptrs();
+        update_ptrs(ipos, opos);
     }
     std::memcpy(pptr(), s, n);
     pbump(n);
@@ -142,17 +144,17 @@ StreamBuffer::int_type StreamBuffer::overflow(int_type c)
     if(traits_type::eq_int_type(traits_type::eof(), c))
         return traits_type::eof();
 
+    off_type ipos = gptr() - eback();
+    off_type opos = pptr() - pbase();
     _byteArray.append(c);
     _size++;
+    update_ptrs(ipos, opos);
     pbump(1);
-    update_ptrs();
     return c;
 }
 
-void StreamBuffer::update_ptrs()
+void StreamBuffer::update_ptrs(off_type ipos, off_type opos)
 {
-    off_type ipos = gptr() - eback();
-    off_type opos = pptr() - pbase();
     char *ptr = _byteArray.data();
     setg(ptr, ptr + ipos, ptr + _size);
     setp(ptr, ptr + _size);
