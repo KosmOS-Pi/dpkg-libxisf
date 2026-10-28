@@ -225,7 +225,7 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
         for(auto &block : subblocks)
         {
             uLongf size = block.second;
-            if(inputSize < block.second)throw Error("Incorrect input block size");
+            if(inputSize < block.first)throw Error("Incorrect input block size");
             bool ok = ::uncompress((Bytef*)dstPtr, &size, (const Bytef*)srcPtr, block.first) == Z_OK && size == block.second;
             uncompressedSubblock(ok, block, srcPtr, dstPtr, "Zlib decompression failed");
             srcPtr += block.first;
@@ -242,7 +242,7 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
         char *dstPtr = data.data();
         for(auto &block : subblocks)
         {
-            if(inputSize < block.second)throw Error("Incorrect input block size");
+            if(inputSize < block.first)throw Error("Incorrect input block size");
             bool ok = LZ4_decompress_safe(srcPtr, dstPtr, block.first, block.second) == static_cast<int>(block.second);
             uncompressedSubblock(ok, block, srcPtr, dstPtr, "LZ4 decompression failed");
             srcPtr += block.first;
@@ -259,7 +259,7 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
         char *dstPtr = data.data();
         for(auto &block : subblocks)
         {
-            if(inputSize < block.second)throw Error("Incorrect input block size");
+            if(inputSize < block.first)throw Error("Incorrect input block size");
             size_t size = ZSTD_decompress(dstPtr, block.second, srcPtr, block.first);
             bool ok = !ZSTD_isError(size) && size == block.second;
             uncompressedSubblock(ok, block, srcPtr, dstPtr, "ZSTD decompression failed");

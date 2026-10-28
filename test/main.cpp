@@ -24,12 +24,10 @@ using namespace LibXISF;
 void benchmark();
 
 #define TEST(cond, msg) if(cond){ std::cerr << msg << std::endl; return 1; }
-#define TEST_PROP(id_, type_, val_) if(property.id == id_ && (property.value.type() != Variant::Type::type_ || property.value.value<type_>() != val_)){ std::cerr << "Property " id_ " doesn't match" << std::endl; return 1; } \
-                                    else if(property.id == id_) { std::cout << property.value.toString() << std::endl; }
+#define TEST_PROP(id_, type_, val_) if(property.id == id_ && (property.value.type() != Variant::Type::type_ || property.value.value<type_>() != val_)){ std::cerr << "Property " id_ " doesn't match" << std::endl; return 1; }
 #define TEST_PROPCX(id_, type_, real_, imag_) if(property.id == id_ && (property.value.type() != Variant::Type::type_ || property.value.value<type_>().real != real_ || property.value.value<type_>().imag != imag_)) \
-                                                { std::cerr << "Property " id_ " doesn't match" << std::endl; return 1; } else if(property.id == id_) { std::cout << property.value.toString() << std::endl; }
-#define TEST_PROPSTR(id_, type_, val_) if(property.id == id_ && (property.value.type() != Variant::Type::type_ || property.value.toString() != Variant(val_).toString())){ std::cerr << "Property " id_ " doesn't match" << std::endl; return 1; } \
-                                      else if(property.id == id_) { std::cout << property.value.toString() << std::endl; }
+                                                { std::cerr << "Property " id_ " doesn't match" << std::endl; return 1; }
+#define TEST_PROPSTR(id_, type_, val_) if(property.id == id_ && (property.value.type() != Variant::Type::type_ || property.value.toString() != Variant(val_).toString())){ std::cerr << "Property " id_ " doesn't match" << std::endl; return 1; }
 
 int main(int argc, char **argv)
 {
@@ -140,20 +138,30 @@ int main(int argc, char **argv)
             TEST(reader.imagesCount() != 1, "No image");
 
             const LibXISF::Image &image = reader.getImage(0);
-            TEST(image.width() != 8, "Invalid width")
-            TEST(image.height() != 10, "Invalid height");
-            TEST(image.colorSpace() != LibXISF::Image::Gray, "Invalid color space");
-            TEST(image.pixelStorage() != LibXISF::Image::Planar, "Invalid pixel storage");
-            if(std::strstr(argv[1], "lz4"))
+            if(!std::strstr(argv[1], "subblock-lz4hc-sh.xisf"))
             {
-                TEST(image.compression() != LibXISF::DataBlock::LZ4, "Invalid compression codec");
+                TEST(image.width() != 8, "Invalid width")
+                TEST(image.height() != 10, "Invalid height");
+                TEST(image.imageDataSize() != 80*2, "Invalid data size");
+                if(std::strstr(argv[1], "lz4"))
+                {
+                    TEST(image.compression() != LibXISF::DataBlock::LZ4, "Invalid compression codec");
+                }
+                else
+                {
+                    TEST(image.compression() != LibXISF::DataBlock::None, "Invalid compression codec");
+                }
             }
             else
             {
-                TEST(image.compression() != LibXISF::DataBlock::None, "Invalid compression codec");
+                TEST(image.compression() != LibXISF::DataBlock::LZ4HC, "Invalid compression codec");
+                TEST(image.width() != 1449, "Invalid width")
+                TEST(image.height() != 1449, "Invalid height");
+                TEST(image.imageDataSize() != 8398404, "Invalid data size");
             }
+            TEST(image.colorSpace() != LibXISF::Image::Gray, "Invalid color space");
+            TEST(image.pixelStorage() != LibXISF::Image::Planar, "Invalid pixel storage");
             //TEST(!image.dataBlock.embedded, "Not embedded");
-            TEST(image.imageDataSize() != 80*2, "Invalid data size");
         }
     }
     catch (const LibXISF::Error &e)
