@@ -1,0 +1,5 @@
+libxisf (0.2.14+kosmos-1~deb13) trixie; urgency=medium
+
+  * Package libXISF version 0.2.14, without bundled libs.
+
+ -- Matteo <matteo@matteopiscitelli.it>  Thu, 29 Oct 2026 10:35:56 +0100

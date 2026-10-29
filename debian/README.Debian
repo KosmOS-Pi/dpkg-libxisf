@@ -1,0 +1,8 @@
+libxisf0 for Debian
+
+LibXISF original sources include some bundled libraries (lz4, pugixml and
+zlib). Instead of using those libs, this package is built against the same
+libraries but from standard debian packages. As a result, bundled libs
+are excluded from source package.
+
+ -- Matteo Piscitelli <matteo@matteopiscitelli.it>  Wed, 23 Jul 2025 16:20:52 +0200

@@ -1,0 +1,8 @@
+.debhelper
+debhelper-build-stamp
+files
+*.log
+*.substvars
+libxisf-dev
+libxisf0
+tmp
