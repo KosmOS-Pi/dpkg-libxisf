@@ -904,6 +904,8 @@ void XISFReaderPrivate::readXISFHeader()
 {
     uint32_t headerLen[2] = {0};
     _io->read((char*)&headerLen, sizeof(headerLen));
+    headerLen[0] = le32toh(headerLen[0]);
+    headerLen[1] = le32toh(headerLen[1]);
 
     ByteArray xisfHeader(headerLen[0]);
     _io->read(xisfHeader.data(), headerLen[0]);
@@ -1249,6 +1251,7 @@ void XISFWriterPrivate::writeHeader()
     }
 
     uint32_t headerSize = header.size() - sizeof(signature);
+    headerSize = htole32(headerSize);
     header.replace(8, sizeof(uint32_t), (const char*)&headerSize, sizeof(uint32_t));
 
     _xisfHeader = ByteArray(header.c_str(), header.size());
@@ -1605,6 +1608,7 @@ void XISFModifyPrivate::save(std::ostream &io)
     }
 
     uint32_t headerSize = header.size() - sizeof(signature);
+    headerSize = htole32(headerSize);
     header.replace(8, sizeof(uint32_t), (const char*)&headerSize, sizeof(uint32_t));
 
     io.write(header.c_str(), header.size());
@@ -1753,6 +1757,8 @@ void XISFModifyPrivate::readXISFHeader()
 
     uint32_t headerLen[2] = {0};
     _io->read((char*)&headerLen, sizeof(headerLen));
+    headerLen[0] = le32toh(headerLen[0]);
+    headerLen[1] = le32toh(headerLen[1]);
 
     ByteArray xisfHeader(headerLen[0]);
     _io->read(xisfHeader.data(), headerLen[0]);
