@@ -18,6 +18,7 @@
 
 #include "libxisf.h"
 #include "streambuffer.h"
+#include "bswap.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -38,7 +39,7 @@ namespace LibXISF
 {
 
 std::vector<std::string> splitString(const std::string &str, char delimiter);
-void deserializeVariant(const pugi::xml_node &node, Variant &variant, const ByteArray &data);
+void deserializeVariant(const pugi::xml_node &node, Variant &variant, const ByteArray &data, bool byteSwap);
 void serializeVariant(pugi::xml_node &node, const Variant &variant);
 Variant variantFromString(Variant::Type type, const String &str);
 
@@ -904,8 +905,8 @@ void XISFReaderPrivate::readXISFHeader()
 {
     uint32_t headerLen[2] = {0};
     _io->read((char*)&headerLen, sizeof(headerLen));
-    headerLen[0] = le32toh(headerLen[0]);
-    headerLen[1] = le32toh(headerLen[1]);
+    headerLen[0] = swapfromle32(headerLen[0]);
+    headerLen[1] = swapfromle32(headerLen[1]);
 
     ByteArray xisfHeader(headerLen[0]);
     _io->read(xisfHeader.data(), headerLen[0]);
@@ -989,6 +990,9 @@ DataBlock XISFReaderPrivate::parseDataBlock(const pugi::xml_node &node)
 
     parseCompression(node, dataBlock);
 
+    if(node.attribute("byteOrder").as_string() == std::string("big"))
+        dataBlock.bigEndian = true;
+
     if(location.size() && location[0] == "embedded")
     {
         dataBlock.embedded = true;
@@ -1032,6 +1036,7 @@ Property XISFReaderPrivate::parseProperty(const pugi::xml_node &node)
     property.id = node.attribute("id").as_string();
     property.comment = node.attribute("comment").as_string();
     ByteArray data;
+    bool isBigEndian = false;
     if(node.attribute("location"))
     {
         DataBlock dataBlock = parseDataBlock(node);
@@ -1039,9 +1044,10 @@ Property XISFReaderPrivate::parseProperty(const pugi::xml_node &node)
             readAttachment(dataBlock);
 
         data = dataBlock.data;
+        isBigEndian = dataBlock.bigEndian;
     }
 
-    deserializeVariant(node, property.value, data);
+    deserializeVariant(node, property.value, data, needByteSwap(isBigEndian));
 
     return property;
 }
@@ -1251,7 +1257,7 @@ void XISFWriterPrivate::writeHeader()
     }
 
     uint32_t headerSize = header.size() - sizeof(signature);
-    headerSize = htole32(headerSize);
+    headerSize = swaptole32(headerSize);
     header.replace(8, sizeof(uint32_t), (const char*)&headerSize, sizeof(uint32_t));
 
     _xisfHeader = ByteArray(header.c_str(), header.size());
@@ -1608,7 +1614,7 @@ void XISFModifyPrivate::save(std::ostream &io)
     }
 
     uint32_t headerSize = header.size() - sizeof(signature);
-    headerSize = htole32(headerSize);
+    headerSize = swaptole32(headerSize);
     header.replace(8, sizeof(uint32_t), (const char*)&headerSize, sizeof(uint32_t));
 
     io.write(header.c_str(), header.size());
@@ -1757,8 +1763,8 @@ void XISFModifyPrivate::readXISFHeader()
 
     uint32_t headerLen[2] = {0};
     _io->read((char*)&headerLen, sizeof(headerLen));
-    headerLen[0] = le32toh(headerLen[0]);
-    headerLen[1] = le32toh(headerLen[1]);
+    headerLen[0] = swapfromle32(headerLen[0]);
+    headerLen[1] = swapfromle32(headerLen[1]);
 
     ByteArray xisfHeader(headerLen[0]);
     _io->read(xisfHeader.data(), headerLen[0]);

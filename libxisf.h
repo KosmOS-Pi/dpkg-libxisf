@@ -95,6 +95,8 @@ public:
     void resize(int rows, int cols) { _rows = rows; _cols = cols; _elem.resize(rows * cols); }
     T& operator()(int row, int col) { return _elem[row * _cols + col]; }
     const T& operator()(int row, int col) const { return _elem[row * _cols + col]; }
+    T& operator[](int idx) { return _elem[idx]; }
+    const T& operator[](int idx) const { return _elem[idx]; }
     int rows() const { return _rows; }
     int cols() const { return _cols; }
 };
@@ -178,6 +180,7 @@ struct LIBXISF_EXPORT DataBlock
         ZSTD
     };
     bool embedded = false;
+    bool bigEndian = false;
     uint32_t byteShuffling = 0;
     uint64_t attachmentPos = 0;
     uint64_t attachmentSize = 0;

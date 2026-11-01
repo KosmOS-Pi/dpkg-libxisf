@@ -23,6 +23,7 @@
 #include <sstream>
 #include "libxisf.h"
 #include <pugixml.hpp>
+#include "bswap.h"
 
 namespace LibXISF
 {
@@ -152,22 +153,104 @@ T fromCharsComplex(const char *beg, const char *end)
 }
 
 template<typename T>
-void fromCharsVector(Variant &v, size_t len, const ByteArray &data)
+void fromCharsVector(Variant &v, size_t len, const ByteArray &data, bool byteSwap)
 {
     v = T();
     v.value<T>().resize(len);
     size_t size = len * sizeof(typename T::value_type);
     if(size)
-        std::memcpy(&v.value<T>()[0], data.data(), size);
+    {
+        if(byteSwap && sizeof(typename T::value_type) > 1)
+        {
+            if constexpr(sizeof(typename T::value_type) == 2)
+            {
+                const uint16_t *p = reinterpret_cast<const uint16_t*>(data.data());
+                uint16_t *t = reinterpret_cast<uint16_t*>(&v.value<T>()[0]);
+                for(size_t i = 0; i < len; i++)
+                    t[i] = bswap_16(p[i]);
+            }
+            else if constexpr(sizeof(typename T::value_type) == 4)
+            {
+                const uint32_t *p = reinterpret_cast<const uint32_t*>(data.data());
+                uint32_t *t = reinterpret_cast<uint32_t*>(&v.value<T>()[0]);
+                for(size_t i = 0; i < len; i++)
+                    t[i] = bswap_32(p[i]);
+            }
+            else if constexpr(std::is_same_v<typename T::value_type, Complex32>)
+            {
+                const uint32_t *p = reinterpret_cast<const uint32_t*>(data.data());
+                uint32_t *t = reinterpret_cast<uint32_t*>(&v.value<T>()[0]);
+                for(size_t i = 0; i < len * 2; i++)
+                    t[i] = bswap_32(p[i]);
+            }
+            else if constexpr(std::is_same_v<typename T::value_type, Complex64>)
+            {
+                const uint64_t *p = reinterpret_cast<const uint64_t*>(data.data());
+                uint64_t *t = reinterpret_cast<uint64_t*>(&v.value<T>()[0]);
+                for(size_t i = 0; i < len * 2; i++)
+                    t[i] = bswap_64(p[i]);
+            }
+            else if constexpr(sizeof(typename T::value_type) == 8)
+            {
+                const uint64_t *p = reinterpret_cast<const uint64_t*>(data.data());
+                uint64_t *t = reinterpret_cast<uint64_t*>(&v.value<T>()[0]);
+                for(size_t i = 0; i < len; i++)
+                    t[i] = bswap_64(p[i]);
+            }
+        }
+        else
+        {
+            std::memcpy(&v.value<T>()[0], data.data(), size);
+        }
+    }
 }
 
 template<typename T>
-void fromCharsMatrix(Variant &v, size_t rows, size_t cols, const ByteArray &data)
+void fromCharsMatrix(Variant &v, size_t rows, size_t cols, const ByteArray &data, bool byteSwap)
 {
     v = T(rows, cols);
     size_t size = rows * cols * sizeof(typename T::value_type);
     if(size)
-        std::memcpy(&v.value<T>()(0, 0), data.data(), size);
+    {
+        if(byteSwap && sizeof(typename T::value_type) > 1)
+        {
+            size_t len = rows * cols;
+            if constexpr(sizeof(typename T::value_type) == 2)
+            {
+                uint16_t *p = reinterpret_cast<uint16_t*>(&v.value<T>()[0]);
+                for(size_t i = 0; i < len; i++)
+                    p[i] = bswap_16(p[i]);
+            }
+            else if constexpr(sizeof(typename T::value_type) == 4)
+            {
+                uint32_t *p = reinterpret_cast<uint32_t*>(&v.value<T>()[0]);
+                for(size_t i = 0; i < len; i++)
+                    p[i] = bswap_32(p[i]);
+            }
+            else if constexpr(std::is_same_v<typename T::value_type, Complex32>)
+            {
+                uint32_t *p = reinterpret_cast<uint32_t*>(&v.value<T>()[0]);
+                for(size_t i = 0; i < len * 2; i++)
+                    p[i] = bswap_32(p[i]);
+            }
+            else if constexpr(std::is_same_v<typename T::value_type, Complex64>)
+            {
+                uint64_t *p = reinterpret_cast<uint64_t*>(&v.value<T>()[0]);
+                for(size_t i = 0; i < len * 2; i++)
+                    p[i] = bswap_64(p[i]);
+            }
+            else if constexpr(sizeof(typename T::value_type) == 8)
+            {
+                uint64_t *p = reinterpret_cast<uint64_t*>(&v.value<T>()[0]);
+                for(size_t i = 0; i < len; i++)
+                    p[i] = bswap_64(p[i]);
+            }
+        }
+        else
+        {
+            std::memcpy(&v.value<T>()(0, 0), data.data(), size);
+        }
+    }
 }
 
 template<typename T>
@@ -188,31 +271,118 @@ void toCharsComplex(const Variant &v, std::string &str)
 
 
 template<typename T>
-void toCharsVector(const Variant &v, size_t &len, ByteArray &data)
+void toCharsVector(const Variant &v, size_t &len, ByteArray &data, bool byteSwap)
 {
     len = v.value<T>().size();
     size_t size = len * sizeof(typename T::value_type);
     data.resize(size);
     if(size)
-        std::memcpy(data.data(), &v.value<T>()[0], size);
+    {
+        if(byteSwap && sizeof(typename T::value_type) > 1)
+        {
+            if constexpr(sizeof(typename T::value_type) == 2)
+            {
+                const uint16_t *p = reinterpret_cast<const uint16_t*>(&v.value<T>()[0]);
+                uint16_t *t = reinterpret_cast<uint16_t*>(data.data());
+                for(size_t i = 0; i < len; i++)
+                    t[i] = bswap_16(p[i]);
+            }
+            else if constexpr(sizeof(typename T::value_type) == 4)
+            {
+                const uint32_t *p = reinterpret_cast<const uint32_t*>(&v.value<T>()[0]);
+                uint32_t *t = reinterpret_cast<uint32_t*>(data.data());
+                for(size_t i = 0; i < len; i++)
+                    t[i] = bswap_32(p[i]);
+            }
+            else if constexpr(std::is_same_v<typename T::value_type, Complex32>)
+            {
+                const uint32_t *p = reinterpret_cast<const uint32_t*>(&v.value<T>()[0]);
+                uint32_t *t = reinterpret_cast<uint32_t*>(data.data());
+                for(size_t i = 0; i < len * 2; i++)
+                    t[i] = bswap_32(p[i]);
+            }
+            else if constexpr(std::is_same_v<typename T::value_type, Complex64>)
+            {
+                const uint64_t *p = reinterpret_cast<const uint64_t*>(&v.value<T>()[0]);
+                uint64_t *t = reinterpret_cast<uint64_t*>(data.data());
+                for(size_t i = 0; i < len * 2; i++)
+                    t[i] = bswap_64(p[i]);
+            }
+            else if constexpr(sizeof(typename T::value_type) == 8)
+            {
+                const uint64_t *p = reinterpret_cast<const uint64_t*>(&v.value<T>()[0]);
+                uint64_t *t = reinterpret_cast<uint64_t*>(data.data());
+                for(size_t i = 0; i < len; i++)
+                    t[i] = bswap_64(p[i]);
+            }
+        }
+        else
+        {
+            std::memcpy(data.data(), &v.value<T>()[0], size);
+        }
+    }
     data.encodeBase64();
     data.append('\0');
 }
 
 template<typename T>
-void toCharsMatrix(const Variant &v, size_t &rows, size_t &cols, ByteArray &data)
+void toCharsMatrix(const Variant &v, size_t &rows, size_t &cols, ByteArray &data, bool byteSwap)
 {
     rows = v.value<T>().rows();
     cols = v.value<T>().cols();
     size_t size = rows * cols * sizeof(typename T::value_type);
     data.resize(size);
     if(size)
-        std::memcpy(data.data(), &v.value<T>()(0, 0), size);
+    {
+        size_t len = rows * cols;
+        if(byteSwap && sizeof(typename T::value_type) > 1)
+        {
+            if constexpr(sizeof(typename T::value_type) == 2)
+            {
+                const uint16_t *p = reinterpret_cast<const uint16_t*>(&v.value<T>()[0]);
+                uint16_t *t = reinterpret_cast<uint16_t*>(data.data());
+                for(size_t i = 0; i < len; i++)
+                    t[i] = bswap_16(p[i]);
+            }
+            else if constexpr(sizeof(typename T::value_type) == 4)
+            {
+                const uint32_t *p = reinterpret_cast<const uint32_t*>(&v.value<T>()[0]);
+                uint32_t *t = reinterpret_cast<uint32_t*>(data.data());
+                for(size_t i = 0; i < len; i++)
+                    t[i] = bswap_32(p[i]);
+            }
+            else if constexpr(std::is_same_v<typename T::value_type, Complex32>)
+            {
+                const uint32_t *p = reinterpret_cast<const uint32_t*>(&v.value<T>()[0]);
+                uint32_t *t = reinterpret_cast<uint32_t*>(data.data());
+                for(size_t i = 0; i < len * 2; i++)
+                    t[i] = bswap_32(p[i]);
+            }
+            else if constexpr(std::is_same_v<typename T::value_type, Complex64>)
+            {
+                const uint64_t *p = reinterpret_cast<const uint64_t*>(&v.value<T>()[0]);
+                uint64_t *t = reinterpret_cast<uint64_t*>(data.data());
+                for(size_t i = 0; i < len * 2; i++)
+                    t[i] = bswap_64(p[i]);
+            }
+            else if constexpr(sizeof(typename T::value_type) == 8)
+            {
+                const uint64_t *p = reinterpret_cast<const uint64_t*>(&v.value<T>()[0]);
+                uint64_t *t = reinterpret_cast<uint64_t*>(data.data());
+                for(size_t i = 0; i < len; i++)
+                    t[i] = bswap_64(p[i]);
+            }
+        }
+        else
+        {
+            std::memcpy(data.data(), &v.value<T>()(0, 0), size);
+        }
+    }
     data.encodeBase64();
     data.append('\0');
 }
 
-void deserializeVariant(const pugi::xml_node &node, Variant &variant, const ByteArray &data)
+void deserializeVariant(const pugi::xml_node &node, Variant &variant, const ByteArray &data, bool byteSwap)
 {
     std::string type = node.attribute("type").as_string();
     Variant::Type typeId = typeToId[type];
@@ -260,18 +430,18 @@ void deserializeVariant(const pugi::xml_node &node, Variant &variant, const Byte
         size_t len = node.attribute("length").as_ullong();
         switch(typeId)
         {
-        case Variant::Type::I8Vector: fromCharsVector<I8Vector>(variant, len, data); break;
-        case Variant::Type::UI8Vector: fromCharsVector<UI8Vector>(variant, len, data); break;
-        case Variant::Type::I16Vector: fromCharsVector<I16Vector>(variant, len, data); break;
-        case Variant::Type::UI16Vector: fromCharsVector<UI16Vector>(variant, len, data); break;
-        case Variant::Type::I32Vector: fromCharsVector<I32Vector>(variant, len, data); break;
-        case Variant::Type::UI32Vector: fromCharsVector<UI32Vector>(variant, len, data); break;
-        case Variant::Type::I64Vector: fromCharsVector<I64Vector>(variant, len, data); break;
-        case Variant::Type::UI64Vector: fromCharsVector<UI64Vector>(variant, len, data); break;
-        case Variant::Type::F32Vector: fromCharsVector<F32Vector>(variant, len, data); break;
-        case Variant::Type::F64Vector: fromCharsVector<F64Vector>(variant, len, data); break;
-        case Variant::Type::C32Vector: fromCharsVector<C32Vector>(variant, len, data); break;
-        case Variant::Type::C64Vector: fromCharsVector<C64Vector>(variant, len, data); break;
+        case Variant::Type::I8Vector: fromCharsVector<I8Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::UI8Vector: fromCharsVector<UI8Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::I16Vector: fromCharsVector<I16Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::UI16Vector: fromCharsVector<UI16Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::I32Vector: fromCharsVector<I32Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::UI32Vector: fromCharsVector<UI32Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::I64Vector: fromCharsVector<I64Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::UI64Vector: fromCharsVector<UI64Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::F32Vector: fromCharsVector<F32Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::F64Vector: fromCharsVector<F64Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::C32Vector: fromCharsVector<C32Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::C64Vector: fromCharsVector<C64Vector>(variant, len, data, byteSwap); break;
         default: break;
         }
     }
@@ -281,18 +451,18 @@ void deserializeVariant(const pugi::xml_node &node, Variant &variant, const Byte
         size_t cols = node.attribute("columns").as_ullong();
         switch(typeId)
         {
-        case Variant::Type::I8Matrix: fromCharsMatrix<I8Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::UI8Matrix: fromCharsMatrix<UI8Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::I16Matrix: fromCharsMatrix<I16Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::UI16Matrix: fromCharsMatrix<UI16Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::I32Matrix: fromCharsMatrix<I32Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::UI32Matrix: fromCharsMatrix<UI32Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::I64Matrix: fromCharsMatrix<I64Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::UI64Matrix: fromCharsMatrix<UI64Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::F32Matrix: fromCharsMatrix<F32Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::F64Matrix: fromCharsMatrix<F64Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::C32Matrix: fromCharsMatrix<C32Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::C64Matrix: fromCharsMatrix<C64Matrix>(variant, rows, cols, data); break;
+        case Variant::Type::I8Matrix: fromCharsMatrix<I8Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::UI8Matrix: fromCharsMatrix<UI8Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::I16Matrix: fromCharsMatrix<I16Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::UI16Matrix: fromCharsMatrix<UI16Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::I32Matrix: fromCharsMatrix<I32Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::UI32Matrix: fromCharsMatrix<UI32Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::I64Matrix: fromCharsMatrix<I64Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::UI64Matrix: fromCharsMatrix<UI64Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::F32Matrix: fromCharsMatrix<F32Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::F64Matrix: fromCharsMatrix<F64Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::C32Matrix: fromCharsMatrix<C32Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::C64Matrix: fromCharsMatrix<C64Matrix>(variant, rows, cols, data, byteSwap); break;
         default: break;
         }
     }
@@ -304,6 +474,8 @@ void serializeVariant(pugi::xml_node &node, const Variant &variant)
     char *end = str + sizeof(str);
 
     node.append_attribute("type").set_value(variant.typeName());
+
+    bool byteSwap = needByteSwap(false);
 
     if(variant.type() == Variant::Type::String)
     {
@@ -348,18 +520,18 @@ void serializeVariant(pugi::xml_node &node, const Variant &variant)
         ByteArray data;
         switch(variant.type())
         {
-        case Variant::Type::I8Vector: toCharsVector<I8Vector>(variant, len, data); break;
-        case Variant::Type::UI8Vector: toCharsVector<UI8Vector>(variant, len, data); break;
-        case Variant::Type::I16Vector: toCharsVector<I16Vector>(variant, len, data); break;
-        case Variant::Type::UI16Vector: toCharsVector<UI16Vector>(variant, len, data); break;
-        case Variant::Type::I32Vector: toCharsVector<I32Vector>(variant, len, data); break;
-        case Variant::Type::UI32Vector: toCharsVector<UI32Vector>(variant, len, data); break;
-        case Variant::Type::I64Vector: toCharsVector<I64Vector>(variant, len, data); break;
-        case Variant::Type::UI64Vector: toCharsVector<UI64Vector>(variant, len, data); break;
-        case Variant::Type::F32Vector: toCharsVector<F32Vector>(variant, len, data); break;
-        case Variant::Type::F64Vector: toCharsVector<F64Vector>(variant, len, data); break;
-        case Variant::Type::C32Vector: toCharsVector<C32Vector>(variant, len, data); break;
-        case Variant::Type::C64Vector: toCharsVector<C64Vector>(variant, len, data); break;
+        case Variant::Type::I8Vector: toCharsVector<I8Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::UI8Vector: toCharsVector<UI8Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::I16Vector: toCharsVector<I16Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::UI16Vector: toCharsVector<UI16Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::I32Vector: toCharsVector<I32Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::UI32Vector: toCharsVector<UI32Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::I64Vector: toCharsVector<I64Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::UI64Vector: toCharsVector<UI64Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::F32Vector: toCharsVector<F32Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::F64Vector: toCharsVector<F64Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::C32Vector: toCharsVector<C32Vector>(variant, len, data, byteSwap); break;
+        case Variant::Type::C64Vector: toCharsVector<C64Vector>(variant, len, data, byteSwap); break;
         default: break;
         }
         node.append_attribute("length").set_value(len);
@@ -373,18 +545,18 @@ void serializeVariant(pugi::xml_node &node, const Variant &variant)
         ByteArray data;
         switch(variant.type())
         {
-        case Variant::Type::I8Matrix: toCharsMatrix<I8Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::UI8Matrix: toCharsMatrix<UI8Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::I16Matrix: toCharsMatrix<I16Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::UI16Matrix: toCharsMatrix<UI16Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::I32Matrix: toCharsMatrix<I32Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::UI32Matrix: toCharsMatrix<UI32Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::I64Matrix: toCharsMatrix<I64Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::UI64Matrix: toCharsMatrix<UI64Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::F32Matrix: toCharsMatrix<F32Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::F64Matrix: toCharsMatrix<F64Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::C32Matrix: toCharsMatrix<C32Matrix>(variant, rows, cols, data); break;
-        case Variant::Type::C64Matrix: toCharsMatrix<C64Matrix>(variant, rows, cols, data); break;
+        case Variant::Type::I8Matrix: toCharsMatrix<I8Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::UI8Matrix: toCharsMatrix<UI8Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::I16Matrix: toCharsMatrix<I16Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::UI16Matrix: toCharsMatrix<UI16Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::I32Matrix: toCharsMatrix<I32Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::UI32Matrix: toCharsMatrix<UI32Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::I64Matrix: toCharsMatrix<I64Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::UI64Matrix: toCharsMatrix<UI64Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::F32Matrix: toCharsMatrix<F32Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::F64Matrix: toCharsMatrix<F64Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::C32Matrix: toCharsMatrix<C32Matrix>(variant, rows, cols, data, byteSwap); break;
+        case Variant::Type::C64Matrix: toCharsMatrix<C64Matrix>(variant, rows, cols, data, byteSwap); break;
         default: break;
         }
 
