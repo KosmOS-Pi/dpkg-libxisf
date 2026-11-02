@@ -1,6 +1,10 @@
 #ifndef BSWAP_H
 #define BSWAP_H
 
+#include <stdint.h>
+#include <type_traits>
+#include "libxisf.h"
+
 #ifdef __linux__
 
 #include <endian.h>
@@ -23,8 +27,6 @@ static inline bool needByteSwap(bool isBigEndian)
 }
 
 #else // __linux__
-
-#include <stdint.h>
 
 static inline uint16_t bswap_16(uint16_t x)
 {
@@ -63,7 +65,7 @@ static inline bool needByteSwap(bool isBigEndian)
     return !isBigEndian;
 }
 
-#endif // __BYTE_ORDER__
+#else // __BYTE_ORDER__
 
 #define swaptole16(x) (x)
 #define swaptole32(x) (x)
@@ -77,6 +79,57 @@ static inline bool needByteSwap(bool isBigEndian)
     return isBigEndian;
 }
 
+#endif // __BYTE_ORDER__
+
 #endif // __linux__
+
+namespace LibXISF
+{
+
+template<typename T>
+void bswapArray(const T *src, T *dst, size_t len, bool byteSwap)
+{
+    if(!byteSwap || sizeof(T) == 1)
+    {
+        std::memcpy(dst, src, len);
+    }
+    if constexpr(sizeof(T) == 2)
+    {
+        const uint16_t *p = reinterpret_cast<const uint16_t*>(src);
+        uint16_t *t = reinterpret_cast<uint16_t*>(dst);
+        for(size_t i = 0; i < len; i++)
+            t[i] = bswap_16(p[i]);
+    }
+    else if constexpr(sizeof(T) == 4)
+    {
+        const uint32_t *p = reinterpret_cast<const uint32_t*>(src);
+        uint32_t *t = reinterpret_cast<uint32_t*>(dst);
+        for(size_t i = 0; i < len; i++)
+            t[i] = bswap_32(p[i]);
+    }
+    else if constexpr(std::is_same_v<T, Complex32>)
+    {
+        const uint32_t *p = reinterpret_cast<const uint32_t*>(src);
+        uint32_t *t = reinterpret_cast<uint32_t*>(dst);
+        for(size_t i = 0; i < len * 2; i++)
+            t[i] = bswap_32(p[i]);
+    }
+    else if constexpr(std::is_same_v<T, Complex64>)
+    {
+        const uint64_t *p = reinterpret_cast<const uint64_t*>(src);
+        uint64_t *t = reinterpret_cast<uint64_t*>(dst);
+        for(size_t i = 0; i < len * 2; i++)
+            t[i] = bswap_64(p[i]);
+    }
+    else if constexpr(sizeof(T) == 8)
+    {
+        const uint64_t *p = reinterpret_cast<const uint64_t*>(src);
+        uint64_t *t = reinterpret_cast<uint64_t*>(dst);
+        for(size_t i = 0; i < len; i++)
+            t[i] = bswap_64(p[i]);
+    }
+}
+
+}
 
 #endif // BSWAP_H

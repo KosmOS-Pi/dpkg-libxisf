@@ -159,50 +159,7 @@ void fromCharsVector(Variant &v, size_t len, const ByteArray &data, bool byteSwa
     v.value<T>().resize(len);
     size_t size = len * sizeof(typename T::value_type);
     if(size)
-    {
-        if(byteSwap && sizeof(typename T::value_type) > 1)
-        {
-            if constexpr(sizeof(typename T::value_type) == 2)
-            {
-                const uint16_t *p = reinterpret_cast<const uint16_t*>(data.data());
-                uint16_t *t = reinterpret_cast<uint16_t*>(&v.value<T>()[0]);
-                for(size_t i = 0; i < len; i++)
-                    t[i] = bswap_16(p[i]);
-            }
-            else if constexpr(sizeof(typename T::value_type) == 4)
-            {
-                const uint32_t *p = reinterpret_cast<const uint32_t*>(data.data());
-                uint32_t *t = reinterpret_cast<uint32_t*>(&v.value<T>()[0]);
-                for(size_t i = 0; i < len; i++)
-                    t[i] = bswap_32(p[i]);
-            }
-            else if constexpr(std::is_same_v<typename T::value_type, Complex32>)
-            {
-                const uint32_t *p = reinterpret_cast<const uint32_t*>(data.data());
-                uint32_t *t = reinterpret_cast<uint32_t*>(&v.value<T>()[0]);
-                for(size_t i = 0; i < len * 2; i++)
-                    t[i] = bswap_32(p[i]);
-            }
-            else if constexpr(std::is_same_v<typename T::value_type, Complex64>)
-            {
-                const uint64_t *p = reinterpret_cast<const uint64_t*>(data.data());
-                uint64_t *t = reinterpret_cast<uint64_t*>(&v.value<T>()[0]);
-                for(size_t i = 0; i < len * 2; i++)
-                    t[i] = bswap_64(p[i]);
-            }
-            else if constexpr(sizeof(typename T::value_type) == 8)
-            {
-                const uint64_t *p = reinterpret_cast<const uint64_t*>(data.data());
-                uint64_t *t = reinterpret_cast<uint64_t*>(&v.value<T>()[0]);
-                for(size_t i = 0; i < len; i++)
-                    t[i] = bswap_64(p[i]);
-            }
-        }
-        else
-        {
-            std::memcpy(&v.value<T>()[0], data.data(), size);
-        }
-    }
+        bswapArray<typename T::value_type>(reinterpret_cast<const typename T::value_type*>(data.data()), &v.value<T>()[0], len, byteSwap);
 }
 
 template<typename T>
@@ -210,47 +167,9 @@ void fromCharsMatrix(Variant &v, size_t rows, size_t cols, const ByteArray &data
 {
     v = T(rows, cols);
     size_t size = rows * cols * sizeof(typename T::value_type);
+    size_t len = rows * cols;
     if(size)
-    {
-        if(byteSwap && sizeof(typename T::value_type) > 1)
-        {
-            size_t len = rows * cols;
-            if constexpr(sizeof(typename T::value_type) == 2)
-            {
-                uint16_t *p = reinterpret_cast<uint16_t*>(&v.value<T>()[0]);
-                for(size_t i = 0; i < len; i++)
-                    p[i] = bswap_16(p[i]);
-            }
-            else if constexpr(sizeof(typename T::value_type) == 4)
-            {
-                uint32_t *p = reinterpret_cast<uint32_t*>(&v.value<T>()[0]);
-                for(size_t i = 0; i < len; i++)
-                    p[i] = bswap_32(p[i]);
-            }
-            else if constexpr(std::is_same_v<typename T::value_type, Complex32>)
-            {
-                uint32_t *p = reinterpret_cast<uint32_t*>(&v.value<T>()[0]);
-                for(size_t i = 0; i < len * 2; i++)
-                    p[i] = bswap_32(p[i]);
-            }
-            else if constexpr(std::is_same_v<typename T::value_type, Complex64>)
-            {
-                uint64_t *p = reinterpret_cast<uint64_t*>(&v.value<T>()[0]);
-                for(size_t i = 0; i < len * 2; i++)
-                    p[i] = bswap_64(p[i]);
-            }
-            else if constexpr(sizeof(typename T::value_type) == 8)
-            {
-                uint64_t *p = reinterpret_cast<uint64_t*>(&v.value<T>()[0]);
-                for(size_t i = 0; i < len; i++)
-                    p[i] = bswap_64(p[i]);
-            }
-        }
-        else
-        {
-            std::memcpy(&v.value<T>()(0, 0), data.data(), size);
-        }
-    }
+        bswapArray<typename T::value_type>(reinterpret_cast<const typename T::value_type*>(data.data()), &v.value<T>()[0], len, byteSwap);
 }
 
 template<typename T>
@@ -276,51 +195,10 @@ void toCharsVector(const Variant &v, size_t &len, ByteArray &data, bool byteSwap
     len = v.value<T>().size();
     size_t size = len * sizeof(typename T::value_type);
     data.resize(size);
+
     if(size)
-    {
-        if(byteSwap && sizeof(typename T::value_type) > 1)
-        {
-            if constexpr(sizeof(typename T::value_type) == 2)
-            {
-                const uint16_t *p = reinterpret_cast<const uint16_t*>(&v.value<T>()[0]);
-                uint16_t *t = reinterpret_cast<uint16_t*>(data.data());
-                for(size_t i = 0; i < len; i++)
-                    t[i] = bswap_16(p[i]);
-            }
-            else if constexpr(sizeof(typename T::value_type) == 4)
-            {
-                const uint32_t *p = reinterpret_cast<const uint32_t*>(&v.value<T>()[0]);
-                uint32_t *t = reinterpret_cast<uint32_t*>(data.data());
-                for(size_t i = 0; i < len; i++)
-                    t[i] = bswap_32(p[i]);
-            }
-            else if constexpr(std::is_same_v<typename T::value_type, Complex32>)
-            {
-                const uint32_t *p = reinterpret_cast<const uint32_t*>(&v.value<T>()[0]);
-                uint32_t *t = reinterpret_cast<uint32_t*>(data.data());
-                for(size_t i = 0; i < len * 2; i++)
-                    t[i] = bswap_32(p[i]);
-            }
-            else if constexpr(std::is_same_v<typename T::value_type, Complex64>)
-            {
-                const uint64_t *p = reinterpret_cast<const uint64_t*>(&v.value<T>()[0]);
-                uint64_t *t = reinterpret_cast<uint64_t*>(data.data());
-                for(size_t i = 0; i < len * 2; i++)
-                    t[i] = bswap_64(p[i]);
-            }
-            else if constexpr(sizeof(typename T::value_type) == 8)
-            {
-                const uint64_t *p = reinterpret_cast<const uint64_t*>(&v.value<T>()[0]);
-                uint64_t *t = reinterpret_cast<uint64_t*>(data.data());
-                for(size_t i = 0; i < len; i++)
-                    t[i] = bswap_64(p[i]);
-            }
-        }
-        else
-        {
-            std::memcpy(data.data(), &v.value<T>()[0], size);
-        }
-    }
+        bswapArray<typename T::value_type>(&v.value<T>()[0], reinterpret_cast<typename T::value_type*>(data.data()), len, byteSwap);
+
     data.encodeBase64();
     data.append('\0');
 }
@@ -331,53 +209,12 @@ void toCharsMatrix(const Variant &v, size_t &rows, size_t &cols, ByteArray &data
     rows = v.value<T>().rows();
     cols = v.value<T>().cols();
     size_t size = rows * cols * sizeof(typename T::value_type);
+    size_t len = rows * cols;
     data.resize(size);
+
     if(size)
-    {
-        size_t len = rows * cols;
-        if(byteSwap && sizeof(typename T::value_type) > 1)
-        {
-            if constexpr(sizeof(typename T::value_type) == 2)
-            {
-                const uint16_t *p = reinterpret_cast<const uint16_t*>(&v.value<T>()[0]);
-                uint16_t *t = reinterpret_cast<uint16_t*>(data.data());
-                for(size_t i = 0; i < len; i++)
-                    t[i] = bswap_16(p[i]);
-            }
-            else if constexpr(sizeof(typename T::value_type) == 4)
-            {
-                const uint32_t *p = reinterpret_cast<const uint32_t*>(&v.value<T>()[0]);
-                uint32_t *t = reinterpret_cast<uint32_t*>(data.data());
-                for(size_t i = 0; i < len; i++)
-                    t[i] = bswap_32(p[i]);
-            }
-            else if constexpr(std::is_same_v<typename T::value_type, Complex32>)
-            {
-                const uint32_t *p = reinterpret_cast<const uint32_t*>(&v.value<T>()[0]);
-                uint32_t *t = reinterpret_cast<uint32_t*>(data.data());
-                for(size_t i = 0; i < len * 2; i++)
-                    t[i] = bswap_32(p[i]);
-            }
-            else if constexpr(std::is_same_v<typename T::value_type, Complex64>)
-            {
-                const uint64_t *p = reinterpret_cast<const uint64_t*>(&v.value<T>()[0]);
-                uint64_t *t = reinterpret_cast<uint64_t*>(data.data());
-                for(size_t i = 0; i < len * 2; i++)
-                    t[i] = bswap_64(p[i]);
-            }
-            else if constexpr(sizeof(typename T::value_type) == 8)
-            {
-                const uint64_t *p = reinterpret_cast<const uint64_t*>(&v.value<T>()[0]);
-                uint64_t *t = reinterpret_cast<uint64_t*>(data.data());
-                for(size_t i = 0; i < len; i++)
-                    t[i] = bswap_64(p[i]);
-            }
-        }
-        else
-        {
-            std::memcpy(data.data(), &v.value<T>()(0, 0), size);
-        }
-    }
+        bswapArray<typename T::value_type>(&v.value<T>()[0], reinterpret_cast<typename T::value_type*>(data.data()), len, byteSwap);
+
     data.encodeBase64();
     data.append('\0');
 }

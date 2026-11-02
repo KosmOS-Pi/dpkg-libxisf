@@ -383,9 +383,9 @@ Property::Property(const String &_id, const char *_value) :
 }
 
 template<typename T>
-void planarToNormal(void *_in, void *_out, size_t channels, size_t size)
+void planarToNormal(const void *_in, void *_out, size_t channels, size_t size)
 {
-    T *in = static_cast<T*>(_in);
+    const T *in = static_cast<const T*>(_in);
     T *out = static_cast<T*>(_out);
     for(size_t i=0; i<size; i++)
         for(size_t o=0; o<channels; o++)
@@ -393,9 +393,9 @@ void planarToNormal(void *_in, void *_out, size_t channels, size_t size)
 }
 
 template<typename T>
-void normalToPlanar(void *_in, void *_out, size_t channels, size_t size)
+void normalToPlanar(const void *_in, void *_out, size_t channels, size_t size)
 {
-    T *in = static_cast<T*>(_in);
+    const T *in = static_cast<const T*>(_in);
     T *out = static_cast<T*>(_out);
     for(size_t i=0; i<size; i++)
         for(size_t o=0; o<channels; o++)
@@ -688,41 +688,41 @@ void Image::convertPixelStorageTo(PixelStorage storage)
     {
     case UInt8:
         if(storage == Normal)
-            planarToNormal<uint8_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            planarToNormal<uint8_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         else
-            normalToPlanar<uint8_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            normalToPlanar<uint8_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         break;
     case UInt16:
         if(storage == Normal)
-            planarToNormal<uint16_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            planarToNormal<uint16_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         else
-            normalToPlanar<uint16_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            normalToPlanar<uint16_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         break;
     case UInt32:
     case Float32:
         if(storage == Normal)
-            planarToNormal<uint32_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            planarToNormal<uint32_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         else
-            normalToPlanar<uint32_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            normalToPlanar<uint32_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         break;
     case UInt64:
     case Float64:
         if(storage == Normal)
-            planarToNormal<uint64_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            planarToNormal<uint64_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         else
-            normalToPlanar<uint64_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            normalToPlanar<uint64_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         break;
     case Complex32:
         if(storage == Normal)
-            planarToNormal<LibXISF::Complex32>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            planarToNormal<LibXISF::Complex32>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         else
-            normalToPlanar<LibXISF::Complex32>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            normalToPlanar<LibXISF::Complex32>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         break;
     case Complex64:
         if(storage == Normal)
-            planarToNormal<LibXISF::Complex64>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            planarToNormal<LibXISF::Complex64>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         else
-            normalToPlanar<LibXISF::Complex64>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            normalToPlanar<LibXISF::Complex64>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         break;
     }
     _dataBlock.data = tmp;
@@ -884,6 +884,21 @@ const Image& XISFReaderPrivate::getImage(uint32_t n, bool readPixels)
     if(img._dataBlock.attachmentPos && readPixels)
     {
         readAttachment(img._dataBlock);
+        if(needByteSwap(img._dataBlock.bigEndian))
+        {
+            size_t sampleSize = img.sampleFormatSize(img.sampleFormat());
+            size_t len = img.imageDataSize() / sampleSize;
+            if(sampleSize == 2)
+                bswapArray<uint16_t>(reinterpret_cast<const uint16_t*>(img._dataBlock.data.data()), reinterpret_cast<uint16_t*>(img._dataBlock.data.data()), len, true);
+            else if(sampleSize == 4)
+                bswapArray<uint32_t>(reinterpret_cast<const uint32_t*>(img._dataBlock.data.data()), reinterpret_cast<uint32_t*>(img._dataBlock.data.data()), len, true);
+            else if(img.sampleFormat() == Image::Complex32)
+                bswapArray<uint32_t>(reinterpret_cast<const uint32_t*>(img._dataBlock.data.data()), reinterpret_cast<uint32_t*>(img._dataBlock.data.data()), len * 2, true);
+            else if(img.sampleFormat() == Image::Complex64)
+                bswapArray<uint64_t>(reinterpret_cast<const uint64_t*>(img._dataBlock.data.data()), reinterpret_cast<uint64_t*>(img._dataBlock.data.data()), len * 2, true);
+            else if(sampleSize == 8)
+                bswapArray<uint64_t>(reinterpret_cast<const uint64_t*>(img._dataBlock.data.data()), reinterpret_cast<uint64_t*>(img._dataBlock.data.data()), len, true);
+        }
     }
     return img;
 }
@@ -1213,8 +1228,24 @@ void XISFWriterPrivate::save(const std::filesystem::path &path)
 void XISFWriterPrivate::writeImage(const Image &image)
 {
     _images.push_back(image);
+    if(needByteSwap(false))// we write out little endian data
+    {
+        char *ptr = _images.back()._dataBlock.data.data();
+        size_t sampleSize = _images.back().sampleFormatSize(_images.back().sampleFormat());
+        size_t len = _images.back().imageDataSize() / sampleSize;
+        if(sampleSize == 2)
+            bswapArray<uint16_t>(reinterpret_cast<const uint16_t*>(ptr), reinterpret_cast<uint16_t*>(ptr), len, true);
+        else if(sampleSize == 4)
+            bswapArray<uint32_t>(reinterpret_cast<const uint32_t*>(ptr), reinterpret_cast<uint32_t*>(ptr), len, true);
+        else if(_images.back().sampleFormat() == Image::Complex32)
+            bswapArray<uint32_t>(reinterpret_cast<const uint32_t*>(ptr), reinterpret_cast<uint32_t*>(ptr), len * 2, true);
+        else if(_images.back().sampleFormat() == Image::Complex64)
+            bswapArray<uint64_t>(reinterpret_cast<const uint64_t*>(ptr), reinterpret_cast<uint64_t*>(ptr), len * 2, true);
+        else if(sampleSize == 8)
+            bswapArray<uint64_t>(reinterpret_cast<const uint64_t*>(ptr), reinterpret_cast<uint64_t*>(ptr), len, true);
+    }
     _images.back()._dataBlock.attachmentPos = 1;
-    _images.back()._dataBlock.compress(image.sampleFormatSize(image.sampleFormat()));
+    _images.back()._dataBlock.compress(_images.back().sampleFormatSize(_images.back().sampleFormat()));
 }
 
 void XISFWriterPrivate::writeHeader()
@@ -1301,7 +1332,7 @@ void XISFWriterPrivate::writeImageElement(pugi::xml_node &node, const Image &ima
         base64.append('\0');
         pugi::xml_node icc_node = image_node.append_child("ICCProfile");
         icc_node.append_attribute("location").set_value("inline:base64");
-        icc_node.append_child(pugi::node_pcdata).set_value(base64.data());
+        icc_node.append_child(pugi::node_pcdata).set_value(base64.constData());
     }
 }
 
@@ -1323,6 +1354,9 @@ void XISFWriterPrivate::writeDataBlockAttributes(pugi::xml_node &image_node, con
         attachment += ":" + std::to_string(dataBlock.data.size());
         image_node.append_attribute("location").set_value(attachment.c_str());
     }
+
+    if(dataBlock.bigEndian)
+        image_node.append_attribute("byteOrder").set_value("big");
 
     std::string codec;
 

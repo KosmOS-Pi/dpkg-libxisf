@@ -57,7 +57,7 @@ public:
     char& operator[](size_t i);
     const char& operator[](size_t i) const;
     ByteArray& operator=(const ByteArray &d);
-    char* data() { return size() ? _data->data() : nullptr; }
+    char* data() { makeUnique(); return size() ? _data->data() : nullptr; }
     const char* data() const { return size() ? _data->data() : nullptr; }
     const char* constData() const { return size() ? _data->data() : nullptr; }
     size_t size() const;
@@ -320,6 +320,10 @@ public:
     const ByteArray& iccProfile() const;
     void setIccProfile(const ByteArray &iccProfile);
 
+    /**
+     * Image data are assumed to be stored in host endianess. When writing file out it is always
+     * XISFWriter convert them to little endian.
+     * */
     void* imageData();
     const void* imageData() const;
     template<typename T>
