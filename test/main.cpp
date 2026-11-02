@@ -135,10 +135,52 @@ int main(int argc, char **argv)
         {
             LibXISF::XISFReader reader;
             reader.open(LibXISF::String(argv[1]));
-            TEST(reader.imagesCount() != 1, "No image");
+            TEST(reader.imagesCount() < 1, "No image");
 
             const LibXISF::Image &image = reader.getImage(0);
-            if(!std::strstr(argv[1], "subblock-lz4hc-sh.xisf"))
+            if(std::strstr(argv[1], "subblock-lz4hc-sh.xisf"))
+            {
+                TEST(image.compression() != LibXISF::DataBlock::LZ4HC, "Invalid compression codec");
+                TEST(image.width() != 1449, "Invalid width")
+                TEST(image.height() != 1449, "Invalid height");
+                TEST(image.imageDataSize() != 8398404, "Invalid data size");
+            }
+            else if(std::strstr(argv[1], "endian.xisf"))
+            {
+                TEST(reader.imagesCount() != 2, "Image count is not 2");
+                const LibXISF::Image &image2 = reader.getImage(1);
+                ByteArray data(5 * 7 * 2);
+                uint16_t *ptr = reinterpret_cast<uint16_t*>(data.data());
+                for(uint64_t i = 0; i < 5 * 7; i++)
+                    ptr[i] = i;
+
+                TEST(image.imageDataSize() != 5 * 7 * 2, "Invalid data size");
+                TEST(std::memcmp(image.imageData(), data.constData(),  image.imageDataSize()), "Image data doesn't match");
+                TEST(std::memcmp(image2.imageData(), data.constData(), image.imageDataSize()), "Image2 data doesn't match");
+
+                auto properties = image.imageProperties();
+                TEST(properties.size() != 18, "Property count doesn't match");
+                for(auto &property : properties)
+                {
+                    TEST_PROP("PropertyString", String, "Hello XISF");
+                    TEST_PROP("PropertyBoolean", Boolean, true);
+                    TEST_PROP("PropertyInt8", Int8, (Int8)8);
+                    TEST_PROP("PropertyInt16", Int16, (Int16)16);
+                    TEST_PROP("PropertyInt32", Int32, (Int32)32);
+                    TEST_PROP("PropertyUInt8", UInt8, (UInt8)8);
+                    TEST_PROP("PropertyUInt16", UInt16, (UInt16)16);
+                    TEST_PROP("PropertyUInt32", UInt32, (UInt32)32);
+                    TEST_PROP("PropertyFloat32", Float32, (Float32) 0.32);
+                    TEST_PROP("PropertyFloat64", Float64, (Float64) 0.64);
+                    TEST_PROPCX("PropertyComplex32", Complex32, 3.0, -2.0);
+                    TEST_PROPCX("PropertyComplex64", Complex64, -3.0, 2.0);
+                    TEST_PROP("VectorUInt16", UI16Vector, UI16Vector({23, 45, 86}));
+                    TEST_PROPSTR("VectorComplex32", C32Vector, C32Vector({{1, 2}, {3, 4}, {5, 6}}));
+                    TEST_PROP("Vector64", F64Vector, F64Vector({1.0, 2.0, 3.0}));
+                    TEST_PROP("Vector64Empty", F64Vector, F64Vector());
+                }
+            }
+            else
             {
                 TEST(image.width() != 8, "Invalid width")
                 TEST(image.height() != 10, "Invalid height");
@@ -151,13 +193,6 @@ int main(int argc, char **argv)
                 {
                     TEST(image.compression() != LibXISF::DataBlock::None, "Invalid compression codec");
                 }
-            }
-            else
-            {
-                TEST(image.compression() != LibXISF::DataBlock::LZ4HC, "Invalid compression codec");
-                TEST(image.width() != 1449, "Invalid width")
-                TEST(image.height() != 1449, "Invalid height");
-                TEST(image.imageDataSize() != 8398404, "Invalid data size");
             }
             TEST(image.colorSpace() != LibXISF::Image::Gray, "Invalid color space");
             TEST(image.pixelStorage() != LibXISF::Image::Planar, "Invalid pixel storage");

@@ -91,9 +91,9 @@ void bswapArray(const T *src, T *dst, size_t len, bool byteSwap)
 {
     if(!byteSwap || sizeof(T) == 1)
     {
-        std::memcpy(dst, src, len);
+        std::memcpy(dst, src, len * sizeof(T));
     }
-    if constexpr(sizeof(T) == 2)
+    else if constexpr(sizeof(T) == 2)
     {
         const uint16_t *p = reinterpret_cast<const uint16_t*>(src);
         uint16_t *t = reinterpret_cast<uint16_t*>(dst);
