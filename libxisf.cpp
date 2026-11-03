@@ -84,25 +84,6 @@ static const std::unordered_map<String, std::pair<String, Variant::Type>> fitsNa
     {"TELESCOP", {"Instrument:Telescope:Name", Variant::Type::String}},
 };
 
-static void byteShuffle(ByteArray &data, int itemSize)
-{
-    if(itemSize > 1)
-    {
-        ByteArray &input = data;
-        ByteArray output(input.size());
-        size_t num = input.size() / itemSize;
-        char *s = output.data();
-        for(int i=0; i<itemSize; i++)
-        {
-            const char *u = input.constData() + i;
-            for(size_t o=0; o<num; o++, s++, u += itemSize)
-                *s = *u;
-        }
-        memcpy(s, input.constData() + num * itemSize, input.size() % itemSize);
-        data = output;
-    }
-}
-
 #ifdef __SSE2__
 #include <x86intrin.h>
 
@@ -187,7 +168,134 @@ size_t byteUnshuffleSSE(const char *in, char *out, size_t num)
     }
     return num * 16 * itemSize;
 }
+
+template<int itemSize>
+size_t byteShuffleSSE(const char *in, char *out, size_t num)
+{
+    __m128i *_out[8] = {(__m128i*)out,
+                        (__m128i*)(out + num),
+                        (__m128i*)(out + num * 2),
+                        (__m128i*)(out + num * 3),
+                        (__m128i*)(out + num * 4),
+                        (__m128i*)(out + num * 5),
+                        (__m128i*)(out + num * 6),
+                        (__m128i*)(out + num * 7)};
+    const __m128i *_in = (const __m128i*)in;
+    num /= 16;
+
+    for(size_t i = 0; i < num; i++)
+    {
+        if constexpr(itemSize == 8)
+        {
+            __m128i a = _mm_loadu_si128(_in + i * 8);
+            __m128i b = _mm_loadu_si128(_in + i * 8 + 1);
+            __m128i c = _mm_loadu_si128(_in + i * 8 + 2);
+            __m128i d = _mm_loadu_si128(_in + i * 8 + 3);
+            __m128i e = _mm_loadu_si128(_in + i * 8 + 4);
+            __m128i f = _mm_loadu_si128(_in + i * 8 + 5);
+            __m128i g = _mm_loadu_si128(_in + i * 8 + 6);
+            __m128i h = _mm_loadu_si128(_in + i * 8 + 7);
+
+            for(int o = 0; o < 8; o++)
+            {
+                __m128i mask = _mm_set1_epi64x(0xff);
+                __m128i x = _mm_packs_epi32(_mm_and_si128(a, mask), _mm_and_si128(b, mask));
+                __m128i y = _mm_packs_epi32(_mm_and_si128(c, mask), _mm_and_si128(d, mask));
+                __m128i z = _mm_packs_epi32(_mm_and_si128(e, mask), _mm_and_si128(f, mask));
+                __m128i w = _mm_packs_epi32(_mm_and_si128(g, mask), _mm_and_si128(h, mask));
+
+                __m128i s = _mm_packus_epi16(x, y);
+                __m128i t = _mm_packus_epi16(z, w);
+                _mm_storeu_si128(_out[o] + i, _mm_packus_epi16(s, t));
+                a = _mm_bsrli_si128(a, 1);
+                b = _mm_bsrli_si128(b, 1);
+                c = _mm_bsrli_si128(c, 1);
+                d = _mm_bsrli_si128(d, 1);
+                e = _mm_bsrli_si128(e, 1);
+                f = _mm_bsrli_si128(f, 1);
+                g = _mm_bsrli_si128(g, 1);
+                h = _mm_bsrli_si128(h, 1);
+            }
+        }
+        if constexpr(itemSize == 4)
+        {
+            __m128i a = _mm_loadu_si128(_in + i * 4);
+            __m128i b = _mm_loadu_si128(_in + i * 4 + 1);
+            __m128i c = _mm_loadu_si128(_in + i * 4 + 2);
+            __m128i d = _mm_loadu_si128(_in + i * 4 + 3);
+
+            for(int o = 0; o < 4; o++)
+            {
+                __m128i mask = _mm_set1_epi32(0xff);
+                __m128i x = _mm_packus_epi16(_mm_and_si128(a, mask), _mm_and_si128(b, mask));
+                __m128i y = _mm_packus_epi16(_mm_and_si128(c, mask), _mm_and_si128(d, mask));
+                _mm_storeu_si128(_out[o] + i, _mm_packus_epi16(x, y));
+
+                a = _mm_bsrli_si128(a, 1);
+                b = _mm_bsrli_si128(b, 1);
+                c = _mm_bsrli_si128(c, 1);
+                d = _mm_bsrli_si128(d, 1);
+            }
+        }
+        if constexpr(itemSize == 2)
+        {
+            __m128i a = _mm_loadu_si128(_in + i * 2);
+            __m128i b = _mm_loadu_si128(_in + i * 2 + 1);
+
+            __m128i mask = _mm_set1_epi16(0xff);
+            __m128i count = _mm_set1_epi64x(8);
+            __m128i x = _mm_packus_epi16(_mm_and_si128(a, mask), _mm_and_si128(b, mask));
+            __m128i y = _mm_packus_epi16(_mm_srl_epi16(a, count), _mm_srl_epi16(b, count));
+
+            _mm_storeu_si128(_out[0] + i, x);
+            _mm_storeu_si128(_out[1] + i, y);
+        }
+    }
+
+    return num * 16 * itemSize;
+}
+
 #endif
+
+static void byteShuffle(ByteArray &data, int itemSize)
+{
+    if(itemSize > 1)
+    {
+        ByteArray &input = data;
+        ByteArray output(input.size());
+        size_t num = input.size() / itemSize;
+        size_t off = 0;
+        char *s = output.data();
+        const char *u = input.constData();
+
+#ifdef __SSE2__
+        if(itemSize == 8)
+            off = byteShuffleSSE<8>(data.constData(), output.data(), num);
+        if(itemSize == 4)
+            off = byteShuffleSSE<4>(data.constData(), output.data(), num);
+        if(itemSize == 2)
+            off = byteShuffleSSE<2>(data.constData(), output.data(), num);
+#endif
+
+        if(off)
+        {
+            for(size_t o=off, p=off/itemSize; p<num; o+=itemSize, p++)
+                for(int i=0; i<itemSize; i++)
+                    s[p + num * i] = u[o+i];
+        }
+        else
+        {
+            for(int i=0; i<itemSize; i++)
+            {
+                const char *u = input.constData() + i;
+                for(size_t o=0; o<num; o++, s++, u += itemSize)
+                    *s = *u;
+            }
+        }
+        memcpy(output.data() + num * itemSize, input.constData() + num * itemSize, input.size() % itemSize);
+        data = output;
+    }
+}
 
 static void byteUnshuffle(ByteArray &data, int itemSize)
 {
