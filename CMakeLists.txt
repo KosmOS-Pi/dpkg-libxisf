@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 
-project(libXISF VERSION 0.2.16 LANGUAGES CXX C
+project(libXISF VERSION 0.2.17 LANGUAGES CXX C
     HOMEPAGE_URL https://gitea.nouspiro.space/nou/libXISF
     DESCRIPTION "LibXISF is C++ library that can read and write XISF files produced by PixInsight.")
 
@@ -106,6 +106,10 @@ if(BUILD_SHARED_LIBS)
 else(BUILD_SHARED_LIBS)
     target_compile_definitions(XISF PUBLIC LIBXISF_STATIC_LIB)
 endif(BUILD_SHARED_LIBS)
+
+if(MSVC)
+    target_compile_definitions(XISF PRIVATE _USE_MATH_DEFINES)
+endif(MSVC)
 
 set(XISF_PUBLIC_HEADERS libxisf.h libXISF_global.h)
 

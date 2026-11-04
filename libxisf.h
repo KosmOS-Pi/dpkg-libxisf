@@ -158,6 +158,7 @@ public:
     Variant() = default;
     template<typename T>
     Variant(const T &t) : _value(t) {}
+    Variant(const char *t) : _value(String(t)) {}
     Type type() const;
     const char *typeName() const;
     template<typename T>
@@ -166,6 +167,7 @@ public:
     const T& value() const { return std::get<T>(_value); }
     template<typename T>
     void setValue(const T& val) { _value = val; }
+    void setValue(const char *val) { if(val)_value = String(val); }
     String toString() const;
 };
 
