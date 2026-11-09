@@ -1,6 +1,6 @@
 /************************************************************************
  * LibXISF - library to load and save XISF files                        *
- * Copyright (C) 2023 Dušan Poizl                                       *
+ * Copyright (C) 2026 Dušan Poizl                                       *
  *                                                                      *
  * This program is free software: you can redistribute it and/or modify *
  * it under the terms of the GNU General Public License as published by *
@@ -18,6 +18,7 @@
 
 #include "libxisf.h"
 #include "streambuffer.h"
+#include "bswap.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -38,7 +39,7 @@ namespace LibXISF
 {
 
 std::vector<std::string> splitString(const std::string &str, char delimiter);
-void deserializeVariant(const pugi::xml_node &node, Variant &variant, const ByteArray &data);
+void deserializeVariant(const pugi::xml_node &node, Variant &variant, const ByteArray &data, bool byteSwap);
 void serializeVariant(pugi::xml_node &node, const Variant &variant);
 Variant variantFromString(Variant::Type type, const String &str);
 
@@ -56,8 +57,8 @@ const size_t GiB = 1073741824;
 static const std::unordered_map<String, std::pair<String, Variant::Type>> fitsNameToPropertyIdTypeConvert = {
     {"OBSERVER", {"Observer:Name", Variant::Type::String}},
     {"RADECSYS", {"Observation:CelestialReferenceSystem", Variant::Type::String}},
-    {"CRVAL1",   {"Observation:Center:Dec", Variant::Type::Float64}},
-    {"CRVAL2",   {"Observation:Center:RA", Variant::Type::Float64}},
+    {"CRVAL1",   {"Observation:Center:RA", Variant::Type::Float64}},
+    {"CRVAL2",   {"Observation:Center:Dec", Variant::Type::Float64}},
     {"CRPIX1",   {"Observation:Center:X", Variant::Type::Float64}},
     {"CRPIX2",   {"Observation:Center:Y", Variant::Type::Float64}},
     {"EQUINOX",  {"Observation:Equinox", Variant::Type::Float64}},
@@ -83,41 +84,63 @@ static const std::unordered_map<String, std::pair<String, Variant::Type>> fitsNa
     {"TELESCOP", {"Instrument:Telescope:Name", Variant::Type::String}},
 };
 
-static void byteShuffle(ByteArray &data, int itemSize)
-{
-    if(itemSize > 1)
-    {
-        ByteArray &input = data;
-        ByteArray output(input.size());
-        size_t num = input.size() / itemSize;
-        char *s = output.data();
-        for(int i=0; i<itemSize; i++)
-        {
-            const char *u = input.constData() + i;
-            for(size_t o=0; o<num; o++, s++, u += itemSize)
-                *s = *u;
-        }
-        memcpy(s, input.constData() + num * itemSize, input.size() % itemSize);
-        data = output;
-    }
-}
-
 #ifdef __SSE2__
 #include <x86intrin.h>
 
 template<int itemSize>
 size_t byteUnshuffleSSE(const char *in, char *out, size_t num)
 {
+    static_assert(itemSize == 8 || itemSize == 4 || itemSize == 2);
+
     //size_t size = num;
-    const __m128i *_in[4] = {(const __m128i*)in,
+    const __m128i *_in[8] = {(const __m128i*)in,
                              (const __m128i*)(in + num),
                              (const __m128i*)(in + num * 2),
-                             (const __m128i*)(in + num * 3)};
+                             (const __m128i*)(in + num * 3),
+                             (const __m128i*)(in + num * 4),
+                             (const __m128i*)(in + num * 5),
+                             (const __m128i*)(in + num * 6),
+                             (const __m128i*)(in + num * 7)};
     __m128i *_out = (__m128i*)out;
     num /= 16;
 
     for(size_t i = 0; i < num; i++)
     {
+        if constexpr(itemSize == 8)
+        {
+            __m128i a = _mm_loadu_si128(_in[0] + i);
+            __m128i b = _mm_loadu_si128(_in[1] + i);
+            __m128i c = _mm_loadu_si128(_in[2] + i);
+            __m128i d = _mm_loadu_si128(_in[3] + i);
+            __m128i e = _mm_loadu_si128(_in[4] + i);
+            __m128i f = _mm_loadu_si128(_in[5] + i);
+            __m128i g = _mm_loadu_si128(_in[6] + i);
+            __m128i h = _mm_loadu_si128(_in[7] + i);
+            __m128i s = _mm_unpacklo_epi8(a, b);
+            __m128i t = _mm_unpackhi_epi8(a, b);
+            __m128i u = _mm_unpacklo_epi8(c, d);
+            __m128i v = _mm_unpackhi_epi8(c, d);
+            __m128i w = _mm_unpacklo_epi8(e, f);
+            __m128i x = _mm_unpackhi_epi8(e, f);
+            __m128i y = _mm_unpacklo_epi8(g, h);
+            __m128i z = _mm_unpackhi_epi8(g, h);
+            a = _mm_unpacklo_epi16(s, u);
+            b = _mm_unpackhi_epi16(s, u);
+            c = _mm_unpacklo_epi16(t, v);
+            d = _mm_unpackhi_epi16(t, v);
+            e = _mm_unpacklo_epi16(w, y);
+            f = _mm_unpackhi_epi16(w, y);
+            g = _mm_unpacklo_epi16(x, z);
+            h = _mm_unpackhi_epi16(x, z);
+            _mm_storeu_si128(_out + i * 8, _mm_unpacklo_epi32(a, e));
+            _mm_storeu_si128(_out + i * 8 + 1, _mm_unpackhi_epi32(a, e));
+            _mm_storeu_si128(_out + i * 8 + 2, _mm_unpacklo_epi32(b, f));
+            _mm_storeu_si128(_out + i * 8 + 3, _mm_unpackhi_epi32(b, f));
+            _mm_storeu_si128(_out + i * 8 + 4, _mm_unpacklo_epi32(c, g));
+            _mm_storeu_si128(_out + i * 8 + 5, _mm_unpackhi_epi32(c, g));
+            _mm_storeu_si128(_out + i * 8 + 6, _mm_unpacklo_epi32(d, h));
+            _mm_storeu_si128(_out + i * 8 + 7, _mm_unpackhi_epi32(d, h));
+        }
         if constexpr(itemSize == 4)
         {
             __m128i a = _mm_loadu_si128(_in[0] + i);
@@ -145,7 +168,134 @@ size_t byteUnshuffleSSE(const char *in, char *out, size_t num)
     }
     return num * 16 * itemSize;
 }
+
+template<int itemSize>
+size_t byteShuffleSSE(const char *in, char *out, size_t num)
+{
+    __m128i *_out[8] = {(__m128i*)out,
+                        (__m128i*)(out + num),
+                        (__m128i*)(out + num * 2),
+                        (__m128i*)(out + num * 3),
+                        (__m128i*)(out + num * 4),
+                        (__m128i*)(out + num * 5),
+                        (__m128i*)(out + num * 6),
+                        (__m128i*)(out + num * 7)};
+    const __m128i *_in = (const __m128i*)in;
+    num /= 16;
+
+    for(size_t i = 0; i < num; i++)
+    {
+        if constexpr(itemSize == 8)
+        {
+            __m128i a = _mm_loadu_si128(_in + i * 8);
+            __m128i b = _mm_loadu_si128(_in + i * 8 + 1);
+            __m128i c = _mm_loadu_si128(_in + i * 8 + 2);
+            __m128i d = _mm_loadu_si128(_in + i * 8 + 3);
+            __m128i e = _mm_loadu_si128(_in + i * 8 + 4);
+            __m128i f = _mm_loadu_si128(_in + i * 8 + 5);
+            __m128i g = _mm_loadu_si128(_in + i * 8 + 6);
+            __m128i h = _mm_loadu_si128(_in + i * 8 + 7);
+
+            for(int o = 0; o < 8; o++)
+            {
+                __m128i mask = _mm_set1_epi64x(0xff);
+                __m128i x = _mm_packs_epi32(_mm_and_si128(a, mask), _mm_and_si128(b, mask));
+                __m128i y = _mm_packs_epi32(_mm_and_si128(c, mask), _mm_and_si128(d, mask));
+                __m128i z = _mm_packs_epi32(_mm_and_si128(e, mask), _mm_and_si128(f, mask));
+                __m128i w = _mm_packs_epi32(_mm_and_si128(g, mask), _mm_and_si128(h, mask));
+
+                __m128i s = _mm_packus_epi16(x, y);
+                __m128i t = _mm_packus_epi16(z, w);
+                _mm_storeu_si128(_out[o] + i, _mm_packus_epi16(s, t));
+                a = _mm_bsrli_si128(a, 1);
+                b = _mm_bsrli_si128(b, 1);
+                c = _mm_bsrli_si128(c, 1);
+                d = _mm_bsrli_si128(d, 1);
+                e = _mm_bsrli_si128(e, 1);
+                f = _mm_bsrli_si128(f, 1);
+                g = _mm_bsrli_si128(g, 1);
+                h = _mm_bsrli_si128(h, 1);
+            }
+        }
+        if constexpr(itemSize == 4)
+        {
+            __m128i a = _mm_loadu_si128(_in + i * 4);
+            __m128i b = _mm_loadu_si128(_in + i * 4 + 1);
+            __m128i c = _mm_loadu_si128(_in + i * 4 + 2);
+            __m128i d = _mm_loadu_si128(_in + i * 4 + 3);
+
+            for(int o = 0; o < 4; o++)
+            {
+                __m128i mask = _mm_set1_epi32(0xff);
+                __m128i x = _mm_packus_epi16(_mm_and_si128(a, mask), _mm_and_si128(b, mask));
+                __m128i y = _mm_packus_epi16(_mm_and_si128(c, mask), _mm_and_si128(d, mask));
+                _mm_storeu_si128(_out[o] + i, _mm_packus_epi16(x, y));
+
+                a = _mm_bsrli_si128(a, 1);
+                b = _mm_bsrli_si128(b, 1);
+                c = _mm_bsrli_si128(c, 1);
+                d = _mm_bsrli_si128(d, 1);
+            }
+        }
+        if constexpr(itemSize == 2)
+        {
+            __m128i a = _mm_loadu_si128(_in + i * 2);
+            __m128i b = _mm_loadu_si128(_in + i * 2 + 1);
+
+            __m128i mask = _mm_set1_epi16(0xff);
+            __m128i count = _mm_set1_epi64x(8);
+            __m128i x = _mm_packus_epi16(_mm_and_si128(a, mask), _mm_and_si128(b, mask));
+            __m128i y = _mm_packus_epi16(_mm_srl_epi16(a, count), _mm_srl_epi16(b, count));
+
+            _mm_storeu_si128(_out[0] + i, x);
+            _mm_storeu_si128(_out[1] + i, y);
+        }
+    }
+
+    return num * 16 * itemSize;
+}
+
 #endif
+
+static void byteShuffle(ByteArray &data, int itemSize)
+{
+    if(itemSize > 1)
+    {
+        ByteArray &input = data;
+        ByteArray output(input.size());
+        size_t num = input.size() / itemSize;
+        size_t off = 0;
+        char *s = output.data();
+        const char *u = input.constData();
+
+#ifdef __SSE2__
+        if(itemSize == 8)
+            off = byteShuffleSSE<8>(data.constData(), output.data(), num);
+        if(itemSize == 4)
+            off = byteShuffleSSE<4>(data.constData(), output.data(), num);
+        if(itemSize == 2)
+            off = byteShuffleSSE<2>(data.constData(), output.data(), num);
+#endif
+
+        if(off)
+        {
+            for(size_t o=off, p=off/itemSize; p<num; o+=itemSize, p++)
+                for(int i=0; i<itemSize; i++)
+                    s[p + num * i] = u[o+i];
+        }
+        else
+        {
+            for(int i=0; i<itemSize; i++)
+            {
+                const char *u = input.constData() + i;
+                for(size_t o=0; o<num; o++, s++, u += itemSize)
+                    *s = *u;
+            }
+        }
+        memcpy(output.data() + num * itemSize, input.constData() + num * itemSize, input.size() % itemSize);
+        data = output;
+    }
+}
 
 static void byteUnshuffle(ByteArray &data, int itemSize)
 {
@@ -156,6 +306,8 @@ static void byteUnshuffle(ByteArray &data, int itemSize)
         size_t num = input.size() / itemSize;
         size_t off = 0;
 #ifdef __SSE2__
+        if(itemSize == 8)
+            off = byteUnshuffleSSE<8>(input.data(), output.data(), num);
         if(itemSize == 4)
             off = byteUnshuffleSSE<4>(input.data(), output.data(), num);
         if(itemSize == 2)
@@ -198,11 +350,19 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
 
     if(encoding == "base64")
         tmp.decodeBase64();
-    else if(encoding == "base16")
+    else if(encoding == "hex")
         tmp.decodeHex();
 
     if(subblocks.size() == 0)
         subblocks.push_back({tmp.size(), uncompressedSize});
+
+    uint64_t totalSize = 0;
+    for(auto block : subblocks)
+        totalSize += block.second;
+    if(uncompressedSize < totalSize)
+        uncompressedSize = totalSize;
+
+    uint64_t inputSize = input.size();
 
     switch(codec)
     {
@@ -217,10 +377,12 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
         for(auto &block : subblocks)
         {
             uLongf size = block.second;
+            if(inputSize < block.first)throw Error("Incorrect input block size");
             bool ok = ::uncompress((Bytef*)dstPtr, &size, (const Bytef*)srcPtr, block.first) == Z_OK && size == block.second;
             uncompressedSubblock(ok, block, srcPtr, dstPtr, "Zlib decompression failed");
             srcPtr += block.first;
             dstPtr += block.second;
+            inputSize -= block.second;
         }
         break;
     }
@@ -232,10 +394,12 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
         char *dstPtr = data.data();
         for(auto &block : subblocks)
         {
+            if(inputSize < block.first)throw Error("Incorrect input block size");
             bool ok = LZ4_decompress_safe(srcPtr, dstPtr, block.first, block.second) == static_cast<int>(block.second);
             uncompressedSubblock(ok, block, srcPtr, dstPtr, "LZ4 decompression failed");
             srcPtr += block.first;
             dstPtr += block.second;
+            inputSize -= block.second;
         }
         break;
     }
@@ -247,11 +411,13 @@ void DataBlock::decompress(const ByteArray &input, const String &encoding)
         char *dstPtr = data.data();
         for(auto &block : subblocks)
         {
+            if(inputSize < block.first)throw Error("Incorrect input block size");
             size_t size = ZSTD_decompress(dstPtr, block.second, srcPtr, block.first);
             bool ok = !ZSTD_isError(size) && size == block.second;
             uncompressedSubblock(ok, block, srcPtr, dstPtr, "ZSTD decompression failed");
             srcPtr += block.first;
             dstPtr += block.second;
+            inputSize -= block.second;
         }
 
     }
@@ -275,7 +441,7 @@ void DataBlock::compress(int sampleFormatSize)
     if (compressionCodecOverride != CompressionCodec::None)
     {
         codec = compressionCodecOverride;
-        byteShuffling = sampleFormatSize;
+        if(byteShuffleOverride)byteShuffling = sampleFormatSize;
         compressLevel = compressionLevelOverride;
     }
 
@@ -368,9 +534,9 @@ Property::Property(const String &_id, const char *_value) :
 }
 
 template<typename T>
-void planarToNormal(void *_in, void *_out, size_t channels, size_t size)
+void planarToNormal(const void *_in, void *_out, size_t channels, size_t size)
 {
-    T *in = static_cast<T*>(_in);
+    const T *in = static_cast<const T*>(_in);
     T *out = static_cast<T*>(_out);
     for(size_t i=0; i<size; i++)
         for(size_t o=0; o<channels; o++)
@@ -378,9 +544,9 @@ void planarToNormal(void *_in, void *_out, size_t channels, size_t size)
 }
 
 template<typename T>
-void normalToPlanar(void *_in, void *_out, size_t channels, size_t size)
+void normalToPlanar(const void *_in, void *_out, size_t channels, size_t size)
 {
-    T *in = static_cast<T*>(_in);
+    const T *in = static_cast<const T*>(_in);
     T *out = static_cast<T*>(_out);
     for(size_t i=0; i<size; i++)
         for(size_t o=0; o<channels; o++)
@@ -550,6 +716,7 @@ bool Image::convertWCSToAstrometricSolution()
        (cdFound || crotaFound) &&
        findKeyword("CTYPE1", ctype1) && findKeyword("CTYPE2", ctype2))
     {
+        if(ctype1 != "RA---TAN" || ctype2 != "DEC--TAN")return false;
         Property ver("AstrometricSolution:Version", "1.0");
         Property ps("AstrometricSolution:ProjectionSystem", "Gnomonic");
         Property rcc("AstrometricSolution:ReferenceCelestialCoordinates", F64Vector{std::stod(crval1), std::stod(crval2)});
@@ -559,7 +726,7 @@ bool Image::convertWCSToAstrometricSolution()
         {
             mx(0, 0) = std::stod(cd1_1); mx(0, 1) = std::stod(cd1_2); mx(1, 0) = std::stod(cd2_1); mx(1, 1) = std::stod(cd2_2);
         }
-        if(crotaFound)
+        else if(crotaFound)
         {
             double cdeltx = std::stod(cdelt1);
             double cdelty = std::stod(cdelt2);
@@ -672,31 +839,41 @@ void Image::convertPixelStorageTo(PixelStorage storage)
     {
     case UInt8:
         if(storage == Normal)
-            planarToNormal<uint8_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            planarToNormal<uint8_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         else
-            normalToPlanar<uint8_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            normalToPlanar<uint8_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         break;
     case UInt16:
         if(storage == Normal)
-            planarToNormal<uint16_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            planarToNormal<uint16_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         else
-            normalToPlanar<uint16_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            normalToPlanar<uint16_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         break;
     case UInt32:
     case Float32:
         if(storage == Normal)
-            planarToNormal<uint32_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            planarToNormal<uint32_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         else
-            normalToPlanar<uint32_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            normalToPlanar<uint32_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         break;
     case UInt64:
     case Float64:
         if(storage == Normal)
-            planarToNormal<uint64_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            planarToNormal<uint64_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         else
-            normalToPlanar<uint64_t>(_dataBlock.data.data(), tmp.data(), _channelCount, size);
+            normalToPlanar<uint64_t>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         break;
-    default:
+    case Complex32:
+        if(storage == Normal)
+            planarToNormal<LibXISF::Complex32>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
+        else
+            normalToPlanar<LibXISF::Complex32>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
+        break;
+    case Complex64:
+        if(storage == Normal)
+            planarToNormal<LibXISF::Complex64>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
+        else
+            normalToPlanar<LibXISF::Complex64>(_dataBlock.data.constData(), tmp.data(), _channelCount, size);
         break;
     }
     _dataBlock.data = tmp;
@@ -858,6 +1035,21 @@ const Image& XISFReaderPrivate::getImage(uint32_t n, bool readPixels)
     if(img._dataBlock.attachmentPos && readPixels)
     {
         readAttachment(img._dataBlock);
+        if(needByteSwap(img._dataBlock.bigEndian))
+        {
+            size_t sampleSize = img.sampleFormatSize(img.sampleFormat());
+            size_t len = img.imageDataSize() / sampleSize;
+            if(sampleSize == 2)
+                bswapArray<uint16_t>(reinterpret_cast<const uint16_t*>(img._dataBlock.data.data()), reinterpret_cast<uint16_t*>(img._dataBlock.data.data()), len, true);
+            else if(sampleSize == 4)
+                bswapArray<uint32_t>(reinterpret_cast<const uint32_t*>(img._dataBlock.data.data()), reinterpret_cast<uint32_t*>(img._dataBlock.data.data()), len, true);
+            else if(img.sampleFormat() == Image::Complex32)
+                bswapArray<uint32_t>(reinterpret_cast<const uint32_t*>(img._dataBlock.data.data()), reinterpret_cast<uint32_t*>(img._dataBlock.data.data()), len * 2, true);
+            else if(img.sampleFormat() == Image::Complex64)
+                bswapArray<uint64_t>(reinterpret_cast<const uint64_t*>(img._dataBlock.data.data()), reinterpret_cast<uint64_t*>(img._dataBlock.data.data()), len * 2, true);
+            else if(sampleSize == 8)
+                bswapArray<uint64_t>(reinterpret_cast<const uint64_t*>(img._dataBlock.data.data()), reinterpret_cast<uint64_t*>(img._dataBlock.data.data()), len, true);
+        }
     }
     return img;
 }
@@ -879,6 +1071,8 @@ void XISFReaderPrivate::readXISFHeader()
 {
     uint32_t headerLen[2] = {0};
     _io->read((char*)&headerLen, sizeof(headerLen));
+    headerLen[0] = swapfromle32(headerLen[0]);
+    headerLen[1] = swapfromle32(headerLen[1]);
 
     ByteArray xisfHeader(headerLen[0]);
     _io->read(xisfHeader.data(), headerLen[0]);
@@ -962,6 +1156,9 @@ DataBlock XISFReaderPrivate::parseDataBlock(const pugi::xml_node &node)
 
     parseCompression(node, dataBlock);
 
+    if(node.attribute("byteOrder").as_string() == std::string("big"))
+        dataBlock.bigEndian = true;
+
     if(location.size() && location[0] == "embedded")
     {
         dataBlock.embedded = true;
@@ -1005,6 +1202,7 @@ Property XISFReaderPrivate::parseProperty(const pugi::xml_node &node)
     property.id = node.attribute("id").as_string();
     property.comment = node.attribute("comment").as_string();
     ByteArray data;
+    bool isBigEndian = false;
     if(node.attribute("location"))
     {
         DataBlock dataBlock = parseDataBlock(node);
@@ -1012,9 +1210,10 @@ Property XISFReaderPrivate::parseProperty(const pugi::xml_node &node)
             readAttachment(dataBlock);
 
         data = dataBlock.data;
+        isBigEndian = dataBlock.bigEndian;
     }
 
-    deserializeVariant(node, property.value, data);
+    deserializeVariant(node, property.value, data, needByteSwap(isBigEndian));
 
     return property;
 }
@@ -1069,7 +1268,7 @@ Image XISFReaderPrivate::parseImage(const pugi::xml_node &node)
     image._dataBlock = parseDataBlock(node);
 
     for(auto &property : node.children("Property"))
-        image._properties.push_back(parseProperty(property));
+        image.addProperty(parseProperty(property));
 
     for(auto &fitsKeyword : node.children("FITSKeyword"))
         image._fitsKeywords.push_back(parseFITSKeyword(fitsKeyword));
@@ -1180,8 +1379,24 @@ void XISFWriterPrivate::save(const std::filesystem::path &path)
 void XISFWriterPrivate::writeImage(const Image &image)
 {
     _images.push_back(image);
+    if(needByteSwap(false))// we write out little endian data
+    {
+        char *ptr = _images.back()._dataBlock.data.data();
+        size_t sampleSize = _images.back().sampleFormatSize(_images.back().sampleFormat());
+        size_t len = _images.back().imageDataSize() / sampleSize;
+        if(sampleSize == 2)
+            bswapArray<uint16_t>(reinterpret_cast<const uint16_t*>(ptr), reinterpret_cast<uint16_t*>(ptr), len, true);
+        else if(sampleSize == 4)
+            bswapArray<uint32_t>(reinterpret_cast<const uint32_t*>(ptr), reinterpret_cast<uint32_t*>(ptr), len, true);
+        else if(_images.back().sampleFormat() == Image::Complex32)
+            bswapArray<uint32_t>(reinterpret_cast<const uint32_t*>(ptr), reinterpret_cast<uint32_t*>(ptr), len * 2, true);
+        else if(_images.back().sampleFormat() == Image::Complex64)
+            bswapArray<uint64_t>(reinterpret_cast<const uint64_t*>(ptr), reinterpret_cast<uint64_t*>(ptr), len * 2, true);
+        else if(sampleSize == 8)
+            bswapArray<uint64_t>(reinterpret_cast<const uint64_t*>(ptr), reinterpret_cast<uint64_t*>(ptr), len, true);
+    }
     _images.back()._dataBlock.attachmentPos = 1;
-    _images.back()._dataBlock.compress(image.sampleFormatSize(image.sampleFormat()));
+    _images.back()._dataBlock.compress(_images.back().sampleFormatSize(_images.back().sampleFormat()));
 }
 
 void XISFWriterPrivate::writeHeader()
@@ -1224,6 +1439,7 @@ void XISFWriterPrivate::writeHeader()
     }
 
     uint32_t headerSize = header.size() - sizeof(signature);
+    headerSize = swaptole32(headerSize);
     header.replace(8, sizeof(uint32_t), (const char*)&headerSize, sizeof(uint32_t));
 
     _xisfHeader = ByteArray(header.c_str(), header.size());
@@ -1267,7 +1483,7 @@ void XISFWriterPrivate::writeImageElement(pugi::xml_node &node, const Image &ima
         base64.append('\0');
         pugi::xml_node icc_node = image_node.append_child("ICCProfile");
         icc_node.append_attribute("location").set_value("inline:base64");
-        icc_node.append_child(pugi::node_pcdata).set_value(base64.data());
+        icc_node.append_child(pugi::node_pcdata).set_value(base64.constData());
     }
 }
 
@@ -1289,6 +1505,9 @@ void XISFWriterPrivate::writeDataBlockAttributes(pugi::xml_node &image_node, con
         attachment += ":" + std::to_string(dataBlock.data.size());
         image_node.append_attribute("location").set_value(attachment.c_str());
     }
+
+    if(dataBlock.bigEndian)
+        image_node.append_attribute("byteOrder").set_value("big");
 
     std::string codec;
 
@@ -1477,6 +1696,7 @@ public:
     void updateFITSKeyword(uint32_t image, const FITSKeyword &keyword, bool add);
     void removeFITSKeyword(uint32_t image, const String &name);
     void updateProperty(uint32_t image, const Property &property);
+    void removeProperty(uint32_t image, const String &id);
 private:
     void readXISFHeader();
     void parseAttachmentPos(pugi::xml_node &root);
@@ -1579,6 +1799,7 @@ void XISFModifyPrivate::save(std::ostream &io)
     }
 
     uint32_t headerSize = header.size() - sizeof(signature);
+    headerSize = swaptole32(headerSize);
     header.replace(8, sizeof(uint32_t), (const char*)&headerSize, sizeof(uint32_t));
 
     io.write(header.c_str(), header.size());
@@ -1696,6 +1917,25 @@ void XISFModifyPrivate::updateProperty(uint32_t image, const Property &property)
     XISFWriterPrivate::writePropertyElement(imageNode, property);
 }
 
+void XISFModifyPrivate::removeProperty(uint32_t image, const String &id)
+{
+    if(!_root)
+        throw Error("No input file opened");
+
+    pugi::xpath_node_set images = _root.select_nodes("//Image");
+
+    if(image >= images.size())
+        throw Error("Out of bounds");
+
+    pugi::xpath_variable_set variables;
+    variables.set("id", id.c_str());
+    pugi::xml_node imageNode = images[image].node();
+    pugi::xml_node propertyNode = imageNode.select_node("Property[@id=string($id)]", &variables).node();
+
+    if(propertyNode)
+        imageNode.remove_child(propertyNode);
+}
+
 void XISFModifyPrivate::readXISFHeader()
 {
     char signature[8];
@@ -1708,6 +1948,8 @@ void XISFModifyPrivate::readXISFHeader()
 
     uint32_t headerLen[2] = {0};
     _io->read((char*)&headerLen, sizeof(headerLen));
+    headerLen[0] = swapfromle32(headerLen[0]);
+    headerLen[1] = swapfromle32(headerLen[1]);
 
     ByteArray xisfHeader(headerLen[0]);
     _io->read(xisfHeader.data(), headerLen[0]);
@@ -1827,6 +2069,11 @@ void XISFModify::removeFITSKeyword(uint32_t image, const String &name)
 void XISFModify::updateProperty(uint32_t image, const Property &property)
 {
     p->updateProperty(image, property);
+}
+
+void XISFModify::removeProperty(uint32_t image, const String &id)
+{
+    p->removeProperty(image, id);
 }
 
 #define STRING_ENUM(map, map2, c, e) { map.insert({#e, c::e}); map2.insert({c::e, #e}); }

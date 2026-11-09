@@ -1,6 +1,6 @@
 /************************************************************************
  * LibXISF - library to load and save XISF files                        *
- * Copyright (C) 2023 Dušan Poizl                                       *
+ * Copyright (C) 2026 Dušan Poizl                                       *
  *                                                                      *
  * This program is free software: you can redistribute it and/or modify *
  * it under the terms of the GNU General Public License as published by *
@@ -59,6 +59,13 @@ const char& ByteArray::operator[](size_t i) const
     return (*_data)[i];
 }
 
+ByteArray& ByteArray::operator=(const ByteArray &d)
+{
+    if(this != &d)
+        _data = d._data;
+    return *this;
+}
+
 size_t ByteArray::size() const
 {
     return _data->size();
@@ -72,6 +79,7 @@ void ByteArray::resize(size_t newsize)
 
 void ByteArray::append(char c)
 {
+    makeUnique();
     _data->push_back(c);
 }
 

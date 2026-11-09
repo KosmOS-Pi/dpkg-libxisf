@@ -1,6 +1,6 @@
 /************************************************************************
  * LibXISF - library to load and save XISF files                        *
- * Copyright (C) 2023 Dušan Poizl                                       *
+ * Copyright (C) 2026 Dušan Poizl                                       *
  *                                                                      *
  * This program is free software: you can redistribute it and/or modify *
  * it under the terms of the GNU General Public License as published by *
@@ -23,13 +23,13 @@
 #  define LIBXISF_EXPORT
 #else
 #  if defined(LIBXISF_LIBRARY)
-#    ifdef WIN32
+#    ifdef _WIN32
 #      define LIBXISF_EXPORT __declspec(dllexport)
 #    else
 #      define LIBXISF_EXPORT __attribute__((visibility("default")))
 #    endif
 #  else
-#    ifdef WIN32
+#    ifdef _WIN32
 #      define LIBXISF_EXPORT __declspec(dllimport)
 #    else
 #      define LIBXISF_EXPORT __attribute__((visibility("default")))

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 
-project(libXISF VERSION 0.2.14 LANGUAGES CXX C
+project(libXISF VERSION 0.2.17 LANGUAGES CXX C
     HOMEPAGE_URL https://gitea.nouspiro.space/nou/libXISF
     DESCRIPTION "LibXISF is C++ library that can read and write XISF files produced by PixInsight.")
 
@@ -62,6 +62,7 @@ else(USE_BUNDLED_ZLIB)
 endif(USE_BUNDLED_ZLIB)
 
 add_library(XISF
+  bswap.h
   bytearray.cpp
   libXISF_global.h
   libxisf.cpp
@@ -106,6 +107,10 @@ else(BUILD_SHARED_LIBS)
     target_compile_definitions(XISF PUBLIC LIBXISF_STATIC_LIB)
 endif(BUILD_SHARED_LIBS)
 
+if(MSVC)
+    target_compile_definitions(XISF PRIVATE _USE_MATH_DEFINES)
+endif(MSVC)
+
 set(XISF_PUBLIC_HEADERS libxisf.h libXISF_global.h)
 
 include(GNUInstallDirs)
@@ -135,3 +140,6 @@ target_link_libraries(LibXISFTest XISF)
 add_test(NAME LibXISFTest        COMMAND LibXISFTest)
 add_test(NAME LibXISFTestRead    COMMAND LibXISFTest "${CMAKE_CURRENT_LIST_DIR}/test/test.xisf")
 add_test(NAME LibXISFTestReadLZ4 COMMAND LibXISFTest "${CMAKE_CURRENT_LIST_DIR}/test/test_lz4.xisf")
+add_test(NAME LibXISFTestReadSub COMMAND LibXISFTest "${CMAKE_CURRENT_LIST_DIR}/test/subblock-lz4hc-sh.xisf")
+add_test(NAME LibXISFTestBigEnd  COMMAND LibXISFTest "${CMAKE_CURRENT_LIST_DIR}/test/bigendian.xisf")
+add_test(NAME LibXISFTestLitEnd  COMMAND LibXISFTest "${CMAKE_CURRENT_LIST_DIR}/test/littleendian.xisf")

@@ -1,6 +1,6 @@
 /************************************************************************
  * LibXISF - library to load and save XISF files                        *
- * Copyright (C) 2023 Dušan Poizl                                       *
+ * Copyright (C) 2026 Dušan Poizl                                       *
  *                                                                      *
  * This program is free software: you can redistribute it and/or modify *
  * it under the terms of the GNU General Public License as published by *
@@ -56,7 +56,8 @@ public:
     ByteArray(const ByteArray &d);
     char& operator[](size_t i);
     const char& operator[](size_t i) const;
-    char* data() { return size() ? _data->data() : nullptr; }
+    ByteArray& operator=(const ByteArray &d);
+    char* data() { makeUnique(); return size() ? _data->data() : nullptr; }
     const char* data() const { return size() ? _data->data() : nullptr; }
     const char* constData() const { return size() ? _data->data() : nullptr; }
     size_t size() const;
@@ -94,6 +95,8 @@ public:
     void resize(int rows, int cols) { _rows = rows; _cols = cols; _elem.resize(rows * cols); }
     T& operator()(int row, int col) { return _elem[row * _cols + col]; }
     const T& operator()(int row, int col) const { return _elem[row * _cols + col]; }
+    T& operator[](int idx) { return _elem[idx]; }
+    const T& operator[](int idx) const { return _elem[idx]; }
     int rows() const { return _rows; }
     int cols() const { return _cols; }
 };
@@ -155,6 +158,7 @@ public:
     Variant() = default;
     template<typename T>
     Variant(const T &t) : _value(t) {}
+    Variant(const char *t) : _value(String(t)) {}
     Type type() const;
     const char *typeName() const;
     template<typename T>
@@ -163,6 +167,7 @@ public:
     const T& value() const { return std::get<T>(_value); }
     template<typename T>
     void setValue(const T& val) { _value = val; }
+    void setValue(const char *val) { if(val)_value = String(val); }
     String toString() const;
 };
 
@@ -177,6 +182,7 @@ struct LIBXISF_EXPORT DataBlock
         ZSTD
     };
     bool embedded = false;
+    bool bigEndian = false;
     uint32_t byteShuffling = 0;
     uint64_t attachmentPos = 0;
     uint64_t attachmentSize = 0;
@@ -316,6 +322,10 @@ public:
     const ByteArray& iccProfile() const;
     void setIccProfile(const ByteArray &iccProfile);
 
+    /**
+     * Image data are assumed to be stored in host endianess. When writing file out it is always
+     * XISFWriter convert them to little endian.
+     * */
     void* imageData();
     const void* imageData() const;
     template<typename T>
@@ -460,6 +470,12 @@ public:
      * @param property new value of property
      */
     void updateProperty(uint32_t image, const Property &property);
+    /**
+     * @brief removeProperty remove existing property
+     * @param image index of image to update
+     * @param id of property to remove
+     */
+    void removeProperty(uint32_t image, const String &id);
 private:
     XISFModifyPrivate *p;
 };
